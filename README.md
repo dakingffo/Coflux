@@ -121,7 +121,7 @@ We recommend using CMake's `FetchContent` to integrate Coflux into your project:
 include(FetchContent)
 FetchContent_Declare(
     coflux
-    GIT_REPOSITORY [https://github.com/YOUR_USERNAME/coflux.git](https://github.com/YOUR_USERNAME/coflux.git)
+    GIT_REPOSITORY [https://github.com/dakingffo/coflux.git](https://github.com/dakingffo/coflux.git)
     GIT_TAG        v1.0.0 # Or a specific commit hash
 )
 FetchContent_MakeAvailable(coflux)

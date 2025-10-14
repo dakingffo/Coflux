@@ -106,7 +106,7 @@ Coflux是一个**纯头文件库**，您只需要将`include`目录添加到您�
 include(FetchContent)
 FetchContent_Declare(
     coflux
-    GIT_REPOSITORY [https://github.com/YOUR_USERNAME/coflux.git](https://github.com/YOUR_USERNAME/coflux.git)
+    GIT_REPOSITORY [https://github.com/dakingffo/coflux.git](https://github.com/dakingffo/coflux.git)
     GIT_TAG        v0.1.0 # 或者一个具体的commit hash
 )
 FetchContent_MakeAvailable(coflux)
