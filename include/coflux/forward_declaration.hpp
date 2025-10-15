@@ -1,5 +1,5 @@
 #if defined(_MSC_VER) && _MSC_VER > 1000 || defined(__clang__) || (defined(__GNUC__) && __GNUC__ >= 3)
-	#pragma once
+#pragma once
 #endif
 
 #ifndef COFLUX_FORWARD_DECLARATION_HPP
@@ -29,6 +29,7 @@
 #include <ranges>
 #include <iterator>
 #include <typeindex>
+#include <utility>
 
 #include <vector>
 #include <list>
@@ -279,49 +280,6 @@ namespace coflux {
 		struct promise_callback_base;
 		template <bool Ownership>
 		struct promise_fork_base;
-	}
-
-	template <bool ParentOwnership>
-	struct environment_info {
-		environment_info(detail::promise_fork_base<ParentOwnership>* p, std::pmr::memory_resource* m, scheduler<void> sch)
-			: parent_promise_(p)
-			, memo_(m)
-			, parent_scheduler_(sch) {
-		}
-		environment_info() = default;
-		~environment_info() = default;
-
-		environment_info(const environment_info&) = default;
-		environment_info(environment_info&&) = default;
-		environment_info& operator=(const environment_info&) = default;
-		environment_info& operator=(environment_info&&) = default;
-
-		detail::promise_fork_base<ParentOwnership>* parent_promise_ = nullptr;
-		std::pmr::memory_resource*					memo_ = nullptr;
-		scheduler<void>						        parent_scheduler_{};
-	};
-
-	template <schedulable Scheduler>
-	struct main_environment_info {
-		using scheduler_type = Scheduler;
-
-		main_environment_info(Scheduler&& sch, std::pmr::memory_resource* memo)
-			: memo_(memo)
-			, scheduler_(std::move(sch)) {}
-		~main_environment_info() = default;
-
-		main_environment_info(const main_environment_info&) = default;
-		main_environment_info(main_environment_info&&) = default;
-		main_environment_info& operator=(const main_environment_info&) = default;
-		main_environment_info& operator=(main_environment_info&&) = default;
-
-		std::pmr::memory_resource* memo_;
-		scheduler_type			   scheduler_;
-	};
-
-	template <schedulable Scheduler>
-	auto make_environment(Scheduler&& sch, std::pmr::memory_resource* memo = std::pmr::get_default_resource()){
-		return main_environment_info<Scheduler>(std::move(sch), memo);
 	}
 }
 

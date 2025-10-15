@@ -32,7 +32,7 @@ namespace coflux {
 			auto find = [tuple_ptr, index]<std::size_t...Is>(std::index_sequence<Is...>) -> void* {
 				auto& tuple = *static_cast<std::tuple<Executors...>*>(tuple_ptr);
 				void* res = nullptr;
-				(((typeid(std::remove_reference_t<std::tuple_element_t<Is, std::tuple<Executors...>>>)) == index ? 
+				(((typeid(std::remove_reference_t<std::tuple_element_t<Is, std::tuple<Executors...>>>)) == index ?
 					(res = &std::get<Is>(tuple), true) : false) || ...);
 				return res;
 			};
@@ -51,10 +51,12 @@ namespace coflux {
 
 		template <typename ...Args>
 			requires (std::constructible_from<Executors, Args>&&...)
-		scheduler(Args&&... args) 
-			: tp_( std::make_shared<std::tuple<Executors...>>(std::forward<Args>(args)...)) {}
+		scheduler(Args&&... args)
+			: tp_(std::make_shared<std::tuple<Executors...>>(std::forward<Args>(args)...)) {
+		}
 		scheduler()
-			: tp_(std::make_shared<std::tuple<Executors...>>()) {}
+			: tp_(std::make_shared<std::tuple<Executors...>>()) {
+		}
 		~scheduler() = default;
 
 		template <certain_executor Idx>

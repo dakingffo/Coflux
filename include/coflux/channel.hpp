@@ -83,7 +83,7 @@ namespace coflux {
 
 			bool					success_flag_;
 			channel_ptr				channel_;
-			const value_type&		value_;
+			const value_type& value_;
 			std::coroutine_handle<> handle_;
 		};
 
@@ -149,7 +149,7 @@ namespace coflux {
 
 			bool					success_flag_;
 			channel_ptr				channel_;
-			value_type&				value_;
+			value_type& value_;
 			std::coroutine_handle<> handle_;
 		};
 

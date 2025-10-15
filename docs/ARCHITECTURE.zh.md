@@ -224,7 +224,7 @@ make_environment(Scheduler&& sch,std::pmr::memory_resource* memo = std:::pmr::ge
 这意味这个参数可以被多个task共享。
 
 `co_await coflux::this_task/this_fork::environment()`
-不接受任何值。this_task/this_fork由父环境确定，这是由静态标签派发控制的。此参数会控制DAG图的构建，因此fork的首个参数必须接受它。fork也在此获取类型擦除的scheduler和父环境的内存资源指针。
+不接受任何值。this_task/this_fork由父环境确定，这是由静态标签派发控制的。此参数会控制DAG图的构建，因此fork的首个参数必须以引用接受它。fork也在此获取类型擦除的scheduler和父环境的内存资源指针。
 
 所有task/fork都会构造到std::pmr::memory_resource*提供的空间上，这为更进一步的内存控制提供了可能。
 

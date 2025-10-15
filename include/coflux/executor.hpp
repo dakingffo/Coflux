@@ -28,7 +28,7 @@ namespace coflux {
 	public:
 		template <typename Func, typename... Args>
 		auto execute(Func&& func, Args&&...args) {
-			return std::async(std::launch::async, std::forward<Func>(func), std::forward<Args>(args...));
+			return std::async(std::launch::async, std::forward<Func>(func), std::forward<Args>(args)...);
 		}
 	};
 
@@ -78,7 +78,8 @@ namespace coflux {
 
 	public:
 		timer_executor()
-			: thread_(std::make_unique<timer_thread>()) {}
+			: thread_(std::make_unique<timer_thread>()) {
+		}
 		~timer_executor() = default;
 
 		timer_executor(const timer_executor&) = delete;

@@ -1,5 +1,5 @@
 #if defined(_MSC_VER) && _MSC_VER > 1000 || defined(__clang__) || (defined(__GNUC__) && __GNUC__ >= 3)
-	#pragma once
+#pragma once
 #endif
 
 #ifndef COFLUX_COMBINER_HPP
@@ -9,7 +9,7 @@
 
 namespace coflux {
     template <fork_lrvalue...Forks, executive Executor>
-    class awaiter<detail::when_any_pair<Forks...>, Executor> : public detail::maysuspend_awaiter_base {
+    struct awaiter<detail::when_any_pair<Forks...>, Executor> : public detail::maysuspend_awaiter_base {
     public:
         using task_type = std::tuple<Forks...>;
         using value_type = std::variant<typename std::remove_reference_t<Forks>::result_type...>;
@@ -69,7 +69,7 @@ namespace coflux {
                         error = error_ptr;
                     }
                     else {
-                        result->second.emplace<I>();
+                        result->second.template emplace<I>();
                     }
                     stop.request_stop();
                     std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
@@ -93,16 +93,16 @@ namespace coflux {
                         });
                     if constexpr (std::is_void_v<typename std::remove_reference_t<std::tuple_element_t<I, task_type>>::value_type>) {
                         fork.then_with_error([cb = void_callback](auto&&...args) {
-                            cb.operator() < I > (std::forward<decltype(args)>(args)...);
+                            cb.template operator() < I > (std::forward<decltype(args)>(args)...);
                             });
                     }
                     else {
                         fork.then_with_result_or_error([cb = callback](auto&&...args) {
-                            cb.operator() < I > (std::forward<decltype(args)>(args)...);
+                            cb.template operator() < I > (std::forward<decltype(args)>(args)...);
                             });
                     }
                 };
-                (set_callback_for_each.operator() < Is > (), ...);
+                (set_callback_for_each.template operator() < Is > (), ...);
             };
             set_callback((std::make_index_sequence<N>()));
 
@@ -126,7 +126,6 @@ namespace coflux {
             return result_->second;
         }
 
-    private:
         static constexpr std::size_t N = sizeof...(Forks);
 
         task_type                                                forks_;
@@ -139,7 +138,7 @@ namespace coflux {
     };
 
     template <task_like...TaskLikes, executive Executor>
-    class awaiter<detail::when_all_pair<TaskLikes...>, Executor> : public detail::maysuspend_awaiter_base {
+    struct awaiter<detail::when_all_pair<TaskLikes...>, Executor> : public detail::maysuspend_awaiter_base {
     public:
         using task_type = std::tuple<TaskLikes...>;
         using value_type = std::tuple<std::optional<typename std::remove_reference_t<TaskLikes>::result_type>...>;
@@ -221,22 +220,22 @@ namespace coflux {
             auto set_callback = [&]<std::size_t...Is>(std::index_sequence<Is...>) {
                 auto set_callback_for_each = [&]<std::size_t I>() {
                     auto&& basic_task = std::get<I>(basic_tasks_);
-                    basic_task.Replace_cancellation_callback(stop_source_.get_token(), 
+                    basic_task.Replace_cancellation_callback(stop_source_.get_token(),
                         [&stop_source = basic_task.handle_.promise().stop_source_] {
                             stop_source.request_stop();
                         });
                     if constexpr (std::is_void_v<typename std::remove_reference_t<std::tuple_element_t<I, task_type>>::value_type>) {
                         basic_task.then_with_error([cb = void_callback](auto&&...args) {
-                            cb.operator() < I > (std::forward<decltype(args)>(args)...);
+                            cb.template operator() < I > (std::forward<decltype(args)>(args)...);
                             });
                     }
                     else {
                         basic_task.then_with_result_or_error([cb = callback](auto&&...args) {
-                            cb.operator() < I > (std::forward<decltype(args)>(args)...);
+                            cb.template operator() < I > (std::forward<decltype(args)>(args)...);
                             });
                     }
                 };
-                (set_callback_for_each.operator() < Is > (), ...);
+                (set_callback_for_each.template operator() < Is > (), ...);
             };
             set_callback((std::make_index_sequence<N>()));
 
@@ -262,7 +261,6 @@ namespace coflux {
                 }, std::move(result_->second));
         }
 
-    private:
         static constexpr std::size_t N = sizeof...(TaskLikes);
 
         task_type                                                basic_tasks_;
@@ -275,15 +273,15 @@ namespace coflux {
         std::optional<std::stop_callback<std::function<void()>>> cancellation_callback_;
     };
 
-	template <fork_lrvalue...Forks>
-	auto when_any(Forks&&...forks) {
-		return detail::when_any_pair<Forks...>(detail::when_any_tag{}, std::tuple<Forks...>(std::forward<Forks>(forks)...));
-	}
+    template <fork_lrvalue...Forks>
+    auto when_any(Forks&&...forks) {
+        return detail::when_any_pair<Forks...>(detail::when_any_tag{}, std::tuple<Forks...>(std::forward<Forks>(forks)...));
+    }
 
-	template <task_like...TaskLikes>
-	auto when_all(TaskLikes&&...tasks) {
-		return detail::when_all_pair<TaskLikes...>(detail::when_all_tag{}, std::tuple<TaskLikes...>(std::forward<TaskLikes>(tasks)...));
-	}
+    template <task_like...TaskLikes>
+    auto when_all(TaskLikes&&...tasks) {
+        return detail::when_all_pair<TaskLikes...>(detail::when_all_tag{}, std::tuple<TaskLikes...>(std::forward<TaskLikes>(tasks)...));
+    }
 }
 
 #endif // !COFLUX_COMBINER_HPP

@@ -149,7 +149,7 @@ namespace coflux {
         };
     }
 
-    namespace detail {
+        namespace detail {
         struct nonsuspend_awaiter_base {};
 
         struct maysuspend_awaiter_base {
@@ -182,11 +182,11 @@ namespace coflux {
         };
     }
 
-    template <typename Task, executive Executor>
-    class awaiter;
+    template <typename Ty, executive Executor>
+    struct awaiter;
 
     template <task_like TaskLike, executive Executor>
-    class awaiter<TaskLike, Executor> : public detail::maysuspend_awaiter_base {
+    struct awaiter<TaskLike, Executor> : public detail::maysuspend_awaiter_base {
     public:
         using task_type = std::conditional_t<std::is_rvalue_reference_v<TaskLike>, std::remove_reference_t<TaskLike>, TaskLike>;
         using value_type = typename std::remove_reference_t<task_type>::value_type;
@@ -236,7 +236,7 @@ namespace coflux {
         executor_pointer executor_;
     };
 
-   
+
 
     namespace detail {
         template <bool Ownership, typename Promise>
