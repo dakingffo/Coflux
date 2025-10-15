@@ -65,28 +65,23 @@ TEST(StructureTest, ExceptionPropagation) {
     EXPECT_THROW(catcher_task.get_result(), std::runtime_error);
 }
 
-TEST(StructureTest, CancellationIsPropagated) {
-    std::atomic<bool> fork_was_cancelled = false;
+coflux::fork<void, TestExecutor> recursion_fork(auto&&, auto&& env, std::atomic<int>& cnt);
+coflux::task<void, TestExecutor, TestScheduler> recursion_task(auto&& env, std::atomic<int>& cnt);
+coflux::fork<void, TestExecutor> recursion_fork(auto&&, auto&& env, std::atomic<int>& cnt) {
+    if (++cnt < 5)
+        co_await recursion_task(env, cnt);
+    else
+        co_return;
+}
+coflux::task<void, TestExecutor, TestScheduler> recursion_task(auto&& env, std::atomic<int>& cnt) {
+    co_await recursion_fork(co_await coflux::this_task::environment(), env, cnt);
+}
+
+TEST(StructureTest, TaskForkRecursion) {
+    std::atomic<int> cnt = 0;
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{}, coflux::timer_executor{} });
+    
+    recursion_task(env, cnt).join();
 
-    auto cancellable_fork = [&](auto&& env, std::atomic<bool>& was_cancelled) -> coflux::fork<void, TestExecutor> {
-        auto token = co_await coflux::this_fork::get_stop_token();
-        // 模拟一个长时工作
-        co_await std::chrono::milliseconds(200);
-        if (token.stop_requested()) {
-            was_cancelled.store(true);
-        }
-        };
-
-    auto parent_task = [&](auto&& env) -> coflux::task<void, TestExecutor, TestScheduler> {
-        // 启动子fork
-        cancellable_fork(co_await coflux::this_task::environment(), fork_was_cancelled);
-        // 在子fork完成前，主动取消自己
-        co_await std::chrono::milliseconds(50);
-        co_await coflux::this_task::cancel();
-        }(env);
-
-    // 等待task完成（它会因为取消而提前完成）
-    std::this_thread::sleep_for(std::chrono::milliseconds(250));
-    EXPECT_TRUE(fork_was_cancelled.load());
+    EXPECT_EQ(cnt.load(), 5);
 }

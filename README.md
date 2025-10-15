@@ -142,7 +142,8 @@ For the further development of this framework:
 
 Known problems:
 1. There is a race condition in the channel.
-   
+2. Cancellation is uncompleted.
+
 ## Contribution
 
 Contributions in any form are welcome\! Whether it's submitting bug reports, feature suggestions, or Pull Requests.

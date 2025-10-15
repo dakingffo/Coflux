@@ -125,6 +125,7 @@ target_link_libraries(your_target PRIVATE coflux)
 
 已知的问题：
 1. channel存在竞态条件。
+1. 协程取消不完善。
 
 ## 贡献
 
