@@ -42,8 +42,8 @@ namespace coflux {
 			basic_task(const basic_task&) = delete;
 			basic_task& operator=(const basic_task&) = delete;
 
-			basic_task(basic_task&& another) noexcept : handle_(std::exchange(another.handle_, nullptr)) {}
-			basic_task& operator=(basic_task&& another) noexcept {
+			basic_task(basic_task && another) noexcept : handle_(std::exchange(another.handle_, nullptr)) {}
+			basic_task& operator=(basic_task && another) noexcept {
 				if (this != &another) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 					if (handle_) {
 						handle_.destroy();
@@ -113,7 +113,7 @@ namespace coflux {
 			}
 
 			template <typename Func>
-			void then(Func&& func) const {
+			void then(Func && func) const {
 				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 					handle_.promise().on_completed(std::forward<Func>(func));
 				}
@@ -121,7 +121,7 @@ namespace coflux {
 
 			template <typename Func>
 				requires std::is_object_v<value_type>
-			void then_with_result_or_error(Func&& func) const {
+			void then_with_result_or_error(Func && func) const {
 				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 					handle_.promise().on_completed_with_result_or_error(std::forward<Func>(func));
 				}
@@ -129,7 +129,7 @@ namespace coflux {
 
 			template <typename Func>
 				requires std::is_void_v<value_type>
-			void then_with_error(Func&& func) const {
+			void then_with_error(Func && func) const {
 				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 					handle_.promise().on_completed_with_error(std::forward<Func>(func));
 				}
@@ -143,8 +143,8 @@ namespace coflux {
 			}
 
 			template <typename...Args>
-				requires !Ownership
-			fork_view<value_type> get_view(Args&&... /* ignored_this */ ) {
+				requires (!Ownership)
+			fork_view<value_type> get_view(Args&&... /* ignored_this */) {
 				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_handle_error();
 				}
@@ -154,11 +154,11 @@ namespace coflux {
 		private:
 			template <typename TaskType>
 			friend struct promise;
-			template <typename, executive>
-			friend class awaiter;
+			template <typename T, executive E>
+			friend struct awaiter;
 
 			template <typename Func>
-			void When_any_all_callback(Func&& func) {
+			void When_any_all_callback(Func && func) {
 				if constexpr (std::is_object_v<value_type>) {
 					then_with_result_or_error(std::forward<Func>(func));
 				}
@@ -185,7 +185,7 @@ namespace coflux {
 			}
 
 			template <typename Func>
-			void Replace_cancellation_callback(std::stop_token&& token, Func&& cb) {
+			void Replace_cancellation_callback(std::stop_token && token, Func && cb) {
 				handle_.promise().cancellation_callback_.emplace(std::move(token), std::move(cb));
 			}
 
@@ -249,7 +249,7 @@ namespace coflux {
 		}
 
 		template <typename Func>
-		void then(Func&& func) const {
+		void then(Func && func) const {
 			if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 				handle_.promise().on_completed(std::forward<Func>(func));
 			}
@@ -257,7 +257,7 @@ namespace coflux {
 
 		template <typename Func>
 			requires std::is_object_v<value_type>
-		void then_with_result_or_error(Func&& func) const {
+		void then_with_result_or_error(Func && func) const {
 			if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 				handle_.promise().on_completed_with_result_or_error(std::forward<Func>(func));
 			}
@@ -265,7 +265,7 @@ namespace coflux {
 
 		template <typename Func>
 			requires std::is_void_v<value_type>
-		void then_with_error(Func&& func)const {
+		void then_with_error(Func && func)const {
 			if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 				handle_.promise().on_completed_with_error(std::forward<Func>(func));
 			}
@@ -277,10 +277,10 @@ namespace coflux {
 		template <typename TaskType>
 		friend struct promise;
 		template <typename, executive>
-		friend class awaiter;
+		friend struct awaiter;
 
 		template <typename Func>
-		void When_any_all_callback(Func&& func) {
+		void When_any_all_callback(Func && func) {
 			if constexpr (std::is_object_v<value_type>) {
 				then_with_result_or_error(std::forward<Func>(func));
 			}
@@ -307,7 +307,7 @@ namespace coflux {
 		}
 
 		template <typename Func>
-		void Replace_cancellation_callback(std::stop_token&& token, Func&& cb) {
+		void Replace_cancellation_callback(std::stop_token && token, Func && cb) {
 			//handle_.promise().cancellation_callback_.emplace(std::move(token), std::move(cb));
 		}
 
@@ -329,7 +329,7 @@ namespace coflux {
 				info, func, std::forward<decltype(args)>(args)...);
 			};
 	}
-	
+
 }
 
 #endif // !COFLUX_TASK_HPP 

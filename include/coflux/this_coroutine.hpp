@@ -6,6 +6,7 @@
 #define COFLUX_THIS_COROUTINE_HPP
 
 #include "awaiter.hpp"
+#include "environment.hpp"
 
 namespace coflux {
     template <bool Ownership>
@@ -85,8 +86,8 @@ namespace coflux {
         */
         template <bool Ownership, executive Executor, typename Suspend = std::suspend_never>
         struct dispatch_awaiter : public Suspend, public maysuspend_awaiter_base, public ownership_tag<Ownership> {
-            using executor_traits  = typename executor_traits<Executor>;
-            using executor_type    = typename executor_traits::executor_type;
+            using executor_traits = coflux::executor_traits<Executor>;
+            using executor_type = typename executor_traits::executor_type;
             using executor_pointer = typename executor_traits::executor_pointer;
 
             explicit dispatch_awaiter(executor_pointer exec)
@@ -132,18 +133,19 @@ namespace coflux {
 
         template <executive Executor>
         struct sleep_awaiter : public maysuspend_awaiter_base {
-            using executor_traits = typename executor_traits<Executor>;
+            using executor_traits = coflux::executor_traits<Executor>;
             using executor_type = typename executor_traits::executor_type;
             using executor_pointer = typename executor_traits::executor_pointer;
 
             sleep_awaiter(executor_pointer exec, std::chrono::milliseconds timer, std::atomic<status>* p)
-                : executor_(exec), timer_(timer), maysuspend_awaiter_base{ p } {};
+                : executor_(exec), timer_(timer), maysuspend_awaiter_base{ p } {
+            };
             ~sleep_awaiter() = default;
 
-            sleep_awaiter(const sleep_awaiter&)            = delete;
-            sleep_awaiter(sleep_awaiter&&)                 = default;
+            sleep_awaiter(const sleep_awaiter&) = delete;
+            sleep_awaiter(sleep_awaiter&&) = default;
             sleep_awaiter& operator=(const sleep_awaiter&) = delete;
-            sleep_awaiter& operator=(sleep_awaiter&&)      = default;
+            sleep_awaiter& operator=(sleep_awaiter&&) = default;
 
             bool await_ready() const noexcept {
                 return false;
@@ -152,7 +154,7 @@ namespace coflux {
             template <typename Promise>
             void await_suspend(std::coroutine_handle<Promise> handle) noexcept {
                 maysuspend_awaiter_base::await_suspend();
-                coflux::executor_traits<timer_executor>::execute(&handle.promise().scheduler_.get<timer_executor>(),
+                coflux::executor_traits<timer_executor>::execute(&handle.promise().scheduler_.template get<timer_executor>(),
                     [handle, this]() { executor_traits::execute(executor_, [handle]() { handle.resume(); }); },
                     timer_);
             }
@@ -164,7 +166,7 @@ namespace coflux {
             executor_pointer executor_;
             std::chrono::milliseconds timer_;
         };
-        
+
         inline std::chrono::milliseconds sleep_for(std::chrono::milliseconds timer) noexcept {
             return { timer };
         }
@@ -210,8 +212,8 @@ namespace coflux {
                 return false;
             }
 
-            template <bool Ownership>
-            bool await_suspend(std::coroutine_handle<promise_fork_base<Ownership>> handle) const noexcept {
+            template <typename Promise>
+            bool await_suspend(std::coroutine_handle<Promise> handle) const noexcept {
                 handle.promise().destroy_forks();
                 return false;
             }
@@ -262,15 +264,21 @@ namespace coflux {
 
             template <typename Promise>
             bool await_suspend(std::coroutine_handle<Promise> handle) noexcept {
-                info_ = handle.promise().get_environment();
+                auto&& env = handle.promise().get_environment();
+                parent_promise_ = env.parent_promise_;
+                memo_ = env.memo_;
+                parent_scheduler_ = env.parent_scheduler_;
+
                 return false;
             }
 
-            environment_info<Ownership> await_resume() const noexcept {
-                return info_;
+            auto&& await_resume() const noexcept {
+                return environment_info<Ownership>(parent_promise_, memo_, parent_scheduler_);
             }
 
-            environment_info<Ownership> info_;
+            promise_fork_base<Ownership>* parent_promise_;
+            std::pmr::memory_resource*    memo_;
+            scheduler<void>			      parent_scheduler_;
         };
 
         namespace debug {

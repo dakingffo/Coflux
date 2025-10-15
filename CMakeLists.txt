@@ -11,7 +11,6 @@ target_include_directories(coflux INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
-find_package(GTest REQUIRED)
 
 # 可选的构建目标
 # ==============================================================================

@@ -83,7 +83,7 @@ int main() {
 
 ## Core Philosophy
 
-Coflux's design is driven by several core concepts. To delve into the philosophical ideas behind **Structured Concurrency**, **Task-as-Context**, and "**Static Ditches**," please read the **[Design and Architecture Document (ARCHITECTURE.md)](./docs/ARCHITECTURE.md)**.
+Coflux's design is driven by several core concepts. To delve into the philosophical ideas behind **Structured Concurrency**, **Task-as-Context**, and "**Static Ditches**," please read the **[Design and Architecture Document (ARCHITECTURE.md)](./docs/ARCHITECTURE.en.md)**.
 
 
 ## Performance & Benchmarks

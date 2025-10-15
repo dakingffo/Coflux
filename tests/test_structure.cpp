@@ -17,7 +17,7 @@ using TestExecutor = coflux::thread_pool_executor<>;
 using TestScheduler = coflux::scheduler<TestExecutor, coflux::timer_executor>;
 
 // 一个会创建 ScopedCounter 的 fork
-coflux::fork<void, TestExecutor> counted_fork(auto env) {
+coflux::fork<void, TestExecutor> counted_fork(auto&& env) {
     ScopedCounter counter;
     // 模拟一些工作
     co_await std::chrono::milliseconds(50);
@@ -30,7 +30,7 @@ TEST(StructureTest, TaskDestructorJoinsChildren) {
     // 将task的生命周期限制在一个独立的块作用域内
     {
         auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 2 }, coflux::timer_executor{} });
-        auto parent_task = [](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {
+        auto parent_task = [](auto&& env) -> coflux::task<void, TestExecutor, TestScheduler> {
             // 创建两个子fork，但不显式等待它们
             // counted_fork会立即开始执行
             counted_fork(co_await coflux::this_task::environment());
@@ -52,12 +52,12 @@ TEST(StructureTest, TaskDestructorJoinsChildren) {
 TEST(StructureTest, ExceptionPropagation) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{}, coflux::timer_executor{} });
 
-    auto throwing_fork = [](auto env) -> coflux::fork<void, TestExecutor> {
+    auto throwing_fork = [](auto&& env) -> coflux::fork<void, TestExecutor> {
         throw std::runtime_error("Test Exception");
         co_return;
         };
 
-    auto catcher_task = [&](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {
+    auto catcher_task = [&](auto&& env) -> coflux::task<void, TestExecutor, TestScheduler> {
         // co_await一个会抛异常的fork
         co_await throwing_fork(co_await coflux::this_task::environment());
         }(env);
@@ -69,7 +69,7 @@ TEST(StructureTest, CancellationIsPropagated) {
     std::atomic<bool> fork_was_cancelled = false;
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{}, coflux::timer_executor{} });
 
-    auto cancellable_fork = [&](auto env, std::atomic<bool>& was_cancelled) -> coflux::fork<void, TestExecutor> {
+    auto cancellable_fork = [&](auto&& env, std::atomic<bool>& was_cancelled) -> coflux::fork<void, TestExecutor> {
         auto token = co_await coflux::this_fork::get_stop_token();
         // 模拟一个长时工作
         co_await std::chrono::milliseconds(200);
@@ -78,7 +78,7 @@ TEST(StructureTest, CancellationIsPropagated) {
         }
         };
 
-    auto parent_task = [&](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {
+    auto parent_task = [&](auto&& env) -> coflux::task<void, TestExecutor, TestScheduler> {
         // 启动子fork
         cancellable_fork(co_await coflux::this_task::environment(), fork_was_cancelled);
         // 在子fork完成前，主动取消自己

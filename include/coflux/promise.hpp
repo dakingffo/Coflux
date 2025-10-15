@@ -63,6 +63,7 @@ namespace coflux {
 			using handle_type = std::coroutine_handle<promise_fork_base<false>>;
 			using callback_type = std::conditional_t<Ownership, std::monostate,
 				std::optional<std::stop_callback<std::function<void()>>>>;
+			using brother_handle = std::conditional_t<Ownership, std::monostate, handle_type>;
 
 			promise_fork_base() {
 #if COFLUX_DEBUG
@@ -121,11 +122,11 @@ namespace coflux {
 			}
 
 			std::stop_source stop_source_;
-			handle_type      children_head_    = nullptr;
-			handle_type      brothers_next_    = nullptr;
+			handle_type      children_head_ = nullptr;
 			std::size_t      children_counter_ = 0;
 
-			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) callback_type cancellation_callback_;
+			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) brother_handle brothers_next_ {};
+			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) callback_type  cancellation_callback_;
 
 #if COFLUX_DEBUG
 			static std::atomic_size_t task_counter;
@@ -133,7 +134,7 @@ namespace coflux {
 
 			std::coroutine_handle<promise_fork_base<true>> parent_task_handle_ = nullptr;
 		};
-
+		template <>
 		std::atomic_size_t promise_fork_base<true>::task_counter = 0;
 #else  
 	};
@@ -147,6 +148,9 @@ namespace coflux {
 
 			using promise_callback_base::invoke_callbacks;
 			using promise_callback_base::on_completed;
+
+			promise_result_base() = default;
+			virtual ~promise_result_base() = default;
 
 			void invoke_result_or_error_callback() {
 				if (result_or_error_callback_) {
@@ -223,6 +227,9 @@ namespace coflux {
 
 			using promise_callback_base::invoke_callbacks;
 			using promise_callback_base::on_completed;
+
+			promise_result_base() = default;
+			virtual ~promise_result_base() = default;
 
 			void invoke_result_or_error_callback() {
 				if (error_callback_) {
@@ -329,7 +336,7 @@ namespace coflux {
 			using result_type = typename result_base::result_type;
 
 			promise_base() = default;
-			virtual ~promise_base() override = default;
+			virtual ~promise_base() = default;
 
 			Initial initial_suspend() const noexcept { return {}; }
 			Final   final_suspend()   const noexcept { return {}; }
@@ -367,29 +374,31 @@ namespace coflux {
 
 		template <typename ...Args>
 			requires Ownership
-		promise(const main_environment_info<Scheduler>& env, Args&&...args)
+		promise(const environment<Scheduler>& env, Args&&...args)
 			: memo_(env.memo_)
 			, scheduler_(env.scheduler_)
-			, executor_(&scheduler_.get<Executor>()) {
+			, executor_(&scheduler_.template get<Executor>()) {
 			this->status_ = running;
 		}
-		template <bool EnvironmentOwnership, typename ...Args>
-			requires !Ownership
-		promise(const environment_info<EnvironmentOwnership>& env, Args&&...args) noexcept
+		template <bool ParentOwnership, typename ...Args>
+			requires (!Ownership)
+		promise(const environment_info<ParentOwnership>& env, Args&&...args) noexcept
 			: memo_(env.memo_)
 			, scheduler_(env.parent_scheduler_)
-			, executor_(&scheduler_.get<Executor>()) {
+			, executor_(&scheduler_.template get<Executor>()) {
 			env.parent_promise_->fork_child(std::coroutine_handle<detail::promise_fork_base<Ownership>>::from_promise(*this));
 			this->status_ = running;
 		}
 		template <typename Functor, typename ...Args>
 			requires Ownership
-		promise(Functor&& /* ignored_this */, const main_environment_info<Scheduler>& env, Args&&...args)
-			: promise(env, std::forward<Args>(args)...) {}
+		promise(Functor&& /* ignored_this */, const environment<Scheduler>& env, Args&&...args)
+			: promise(env, std::forward<Args>(args)...) {
+		}
 		template <typename Functor, bool ParentOwnership, typename ...Args>
-			requires !Ownership
+			requires (!Ownership)
 		promise(Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...args) noexcept
-			: promise(env, std::forward<Args>(args)...) {}
+			: promise(env, std::forward<Args>(args)...) {
+		}
 		~promise() override = default;
 
 
@@ -427,29 +436,49 @@ namespace coflux {
 
 		template <typename ...Args>
 			requires Ownership
-		void* operator new(size_t size, const main_environment_info<Scheduler>& env, Args&&...) {
+		static void* operator new(size_t size, const environment<Scheduler>& env, Args&&...) {
 			return allocate(env.memo_, size);
 		}
 		template <bool ParentOwnership, typename ...Args>
-			requires !Ownership
-		void* operator new(size_t size, environment_info<ParentOwnership> env, Args&&...) {
+			requires (!Ownership)
+		static void* operator new(size_t size, const environment_info<ParentOwnership>& env, Args&&...) {
 			return allocate(env.memo_, size);
 		}
 		template <typename Functor, typename ...Args>
 			requires Ownership
-		void* operator new(size_t size, Functor&& /* ignored_this */, const main_environment_info<Scheduler>& env, Args&&...) {
+		static void* operator new(size_t size, Functor&& /* ignored_this */, const environment<Scheduler>& env, Args&&...) {
 			return allocate(env.memo_, size);
 		}
 		template <typename Functor, bool ParentOwnership, typename ...Args>
-			requires !Ownership
-		void* operator new(size_t size, Functor&& /* ignored_this */, environment_info<ParentOwnership> env, Args&&...) {
+			requires (!Ownership)
+		static void* operator new(size_t size, Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...) {
 			return allocate(env.memo_, size);
 		}
 		template <typename ...Args>
-		void operator delete(void* ptr, size_t size) {
+		static void operator delete(void* ptr, size_t size) {
 			deallocate(ptr, size);
 		}
-		
+		template <typename ...Args>
+			requires Ownership
+		static void operator delete(void* ptr, size_t size, const environment<Scheduler>& env, Args&&...) {
+			deallocate(ptr, size);
+		}
+		template <bool ParentOwnership, typename ...Args>
+			requires (!Ownership)
+		static void operator delete(void* ptr, size_t size, const environment_info<ParentOwnership>& env, Args&&...) {
+			deallocate(ptr, size);
+		}
+		template <typename Functor, typename ...Args>
+			requires Ownership
+		static void operator delete(void* ptr, size_t size, Functor&& /* ignored_this */, const environment<Scheduler>& env, Args&&...) {
+			deallocate(ptr, size);
+		}
+		template <typename Functor, bool ParentOwnership, typename ...Args>
+			requires (!Ownership)
+		static void operator delete(void* ptr, size_t size, Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...) {
+			deallocate(ptr, size);
+		}
+
 		auto initial_suspend() noexcept {
 			return detail::dispatch_awaiter<Ownership, executor_type, Initial>(executor_);
 		}
@@ -458,8 +487,8 @@ namespace coflux {
 			return task_type(std::coroutine_handle<promise>::from_promise(*this));
 		}
 
-		environment_info<Ownership> get_environment() noexcept {
-			return { this, memo_, scheduler_ };
+		auto&& get_environment() noexcept {
+			return environment_info<Ownership>(this, memo_, scheduler_);
 		}
 
 		auto await_transform(detail::get_scheduler_awaiter<Ownership, scheduler<void>>&& awaiter) noexcept {
@@ -467,7 +496,7 @@ namespace coflux {
 		}
 
 		template <awaitable Awaiter>
-			requires !std::is_base_of_v<detail::limited_tag, std::remove_reference_t<Awaiter>>
+			requires (!std::is_base_of_v<detail::limited_tag, std::remove_reference_t<Awaiter>>)
 		decltype(auto) await_transform(Awaiter&& awaiter) {
 			this->status_ = suspending;
 			return std::forward<Awaiter>(awaiter);
@@ -512,37 +541,36 @@ namespace coflux {
 
 		template <typename Rep, typename Period>
 		auto await_transform(std::chrono::duration<Rep, Period>&& sleep_time) {
-			return detail::sleep_awaiter<executor_type>(executor_, 
+			return detail::sleep_awaiter<executor_type>(executor_,
 				std::chrono::duration_cast<std::chrono::milliseconds>(sleep_time), &(this->status_));
 		}
-		
-		template <bool Ownership>
+
 		auto await_transform(cancel_exception<Ownership>&& cancel_msg) {
 			result_base::cancel(cancel_msg);
 			return detail::callback_awaiter{};
 		}
 
-		template <typename Ty, std::size_t N>
-		auto await_transform(std::pair<channel<Ty[N]>*, const Ty&>&& write_pair) {
-			return detail::channel_write_awaiter<channel<Ty[N]>, executor_type>(
+		template <typename T, std::size_t N>
+		auto await_transform(std::pair<channel<T[N]>*, const T&>&& write_pair) {
+			return detail::channel_write_awaiter<channel<T[N]>, executor_type>(
 				write_pair.first, write_pair.second, executor_, &(this->status_));
 		}
 
-		template <typename Ty, std::size_t N>
-		auto await_transform(std::pair<channel<Ty[N]>*, Ty&>&& read_pair) {
-			return detail::channel_read_awaiter<channel<Ty[N]>, executor_type>(
+		template <typename T, std::size_t N>
+		auto await_transform(std::pair<channel<T[N]>*, T&>&& read_pair) {
+			return detail::channel_read_awaiter<channel<T[N]>, executor_type>(
 				read_pair.first, read_pair.second, executor_, &(this->status_));
 		}
 
-		template <typename Ty>
-		auto await_transform(std::pair<channel<Ty[]>*, const Ty&>&& write_pair) {
-			return detail::channel_write_awaiter<channel<Ty[]>, executor_type>(
+		template <typename T>
+		auto await_transform(std::pair<channel<T[]>*, const T&>&& write_pair) {
+			return detail::channel_write_awaiter<channel<T[]>, executor_type>(
 				write_pair.first, write_pair.second, executor_, &(this->status_));
 		}
 
-		template <typename Ty>
-		auto await_transform(std::pair<channel<Ty[]>*, Ty&>&& read_pair) {
-			return detail::channel_read_awaiter<channel<Ty[]>, executor_type>(
+		template <typename T>
+		auto await_transform(std::pair<channel<T[]>*, T&>&& read_pair) {
+			return detail::channel_read_awaiter<channel<T[]>, executor_type>(
 				read_pair.first, read_pair.second, executor_, &(this->status_));
 		}
 
@@ -601,4 +629,4 @@ namespace coflux {
 	};
 }
 
-#endif // !COFLUX_FORWARD_DECLARATION
+#endif // !COFLUX_PROMISE_HPP

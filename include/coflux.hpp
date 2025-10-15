@@ -5,18 +5,19 @@
 #ifndef COFLUX_HPP
 #define COFLUX_HPP
 
-#include "forward_declaration.hpp"
+#include "coflux/forward_declaration.hpp"
 
-#include "awaiter.hpp"
-#include "channel.hpp"
-#include "combiner.hpp"
-#include "concurrent.hpp"
-#include "executor.hpp"
-#include "generator.hpp"
-#include "promise.hpp"
-#include "scheduler.hpp"
-#include "task.hpp"
-#include "this_coroutine.hpp"
+#include "coflux/awaiter.hpp"
+#include "coflux/channel.hpp"
+#include "coflux/combiner.hpp"
+#include "coflux/concurrent.hpp"
+#include "coflux/environment.hpp"
+#include "coflux/executor.hpp"
+#include "coflux/generator.hpp"
+#include "coflux/promise.hpp"
+#include "coflux/scheduler.hpp"
+#include "coflux/task.hpp"
+#include "coflux/this_coroutine.hpp"
 
 #if COFLUX_EXPERIMENTAL	
 

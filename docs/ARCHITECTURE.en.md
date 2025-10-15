@@ -237,7 +237,7 @@ Each `task` copies this information locally to guarantee a complete execution co
 This means the parameter can be shared by multiple tasks.
 
 `co_await coflux::this_task/this_fork::environment()`
-Accepts no values. `this_task`/`this_fork` is determined by the parent environment, which is controlled by static tag dispatch. This parameter controls the construction of the DAG, and therefore, the first parameter of a `fork` must accept it. The `fork` also obtains the type-erased scheduler and the parent environment's memory resource pointer here.
+Accepts no values. `this_task`/`this_fork` is determined by the parent environment, which is controlled by static tag dispatch. This parameter controls the construction of the DAG, and therefore, the first parameter of a `fork` must accept it by reference. The `fork` also obtains the type-erased scheduler and the parent environment's memory resource pointer here.
 
 All `task`/`fork`s are constructed onto the space provided by the `std::pmr::memory_resource*`, which opens up possibilities for more advanced memory control.
 
