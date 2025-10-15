@@ -1,4 +1,5 @@
 #include <iostream>
+
 #include <coflux/task.hpp>
 #include <coflux/scheduler.hpp>
 #include <coflux/combiner.hpp>
