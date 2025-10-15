@@ -25,7 +25,7 @@ Coflux features a **Structured Concurrency** `task/fork` model and a "**Task-as-
 
 ## Quick Start
 
-The example below demonstrates how to define a root task (`main_task`) that spawns a child task (`answer_fork`) running on a thread pool.
+The example below demonstrates how to define a root task (`server_task`) that spawns child forks running on a thread pool.
 
 ```cpp
 #include <iostream>
@@ -52,7 +52,7 @@ coflux::fork<void, task_executor> async_write_response(auto&&, const std::string
 // Handle a single connection using structured concurrency
 coflux::fork<void, task_executor> handle_connection(auto&&, int client_id) {
     try {
-        auto env = co_await coflux::this_fork::environment();
+        auto&& env = co_await coflux::this_fork::environment();
         auto request = co_await async_read_request(env, client_id);
         auto processed_response = request + " [processed by server]";
         co_await async_write_response(env, processed_response);

@@ -27,45 +27,58 @@ Coflux设计了**结构化并发**的`task/fork`模型和“**任务即上下文
 
 ## 快速上手
 
-下面的示例展示了如何定义一个根任务(`main_task`)，并由它派生出一个在线程池上运行的子任务(`answer_fork`)。
+下面的示例展示了如何定义一个根任务(`server_task`)，并由它派生出一个在线程池上运行的子任务。
 
 ```cpp
 #include <iostream>
-#include "coflux/task.hpp"
-#include "coflux/scheduler.hpp"
-#include "coflux/executor.hpp"
+#include <coflux/task.hpp>
+#include <coflux/scheduler.hpp>
+#include <coflux/combiner.hpp>
 
-// 1. 定义执行环境类型
-using MyExecutor = coflux::thread_pool_executor<>;
-using MyScheduler = coflux::scheduler<MyExecutor>;
+using task_executor = coflux::thread_pool_executor<1024>;
 
-// 2. 定义一个子任务(fork)
-// 它必须接收一个 environment_info 作为第一个参数
-coflux::fork<int, MyExecutor> answer_fork(auto&& env) {
-    std::cout << "  - Fork running on a thread pool...\n";
-    co_return 42;
+// Simulate asynchronous network request reading
+coflux::fork<std::string, task_executor> async_read_request(auto&&, int client_id) {
+    std::cout << "[Client " << client_id << "] Waiting for request..." << std::endl;
+    co_await std::chrono::milliseconds(200 + client_id * 100);
+    co_return "Hello from client " + std::to_string(client_id);
 }
 
-// 3. 定义根任务(task)
-// 它必须接收一个 main_environment_info 作为第一个参数
-coflux::task<void, MyExecutor, MyScheduler> main_task(auto&& env) {
-    std::cout << "Main task started.\n";
-
-    // 通过 co_await this_task::environment() 获取环境，并传递给子任务
-    auto result = co_await answer_fork(co_await coflux::this_task::environment());
-
-    std::cout << "Fork returned: " << result << "\n";
-    std.cout << "Main task finished.\n";
+// Simulate asynchronous network response writing
+coflux::fork<void, task_executor> async_write_response(auto&&, const std::string& response) {
+    std::cout << "  -> Echoing back: '" << response << "'" << std::endl;
+    co_await std::chrono::milliseconds((rand() % 5) * 100);
     co_return;
 }
 
+// Handle a single connection using structured concurrency
+coflux::fork<void, task_executor> handle_connection(auto&&, int client_id) {
+    try {
+        auto&& env = co_await coflux::this_fork::environment();
+        auto request = co_await async_read_request(env, client_id);
+        auto processed_response = request + " [processed by server]";
+        co_await async_write_response(env, processed_response);
+        std::cout << "[Client " << client_id << "] Connection handled successfully." << std::endl;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "[Client " << client_id << "] Error: " << e.what() << std::endl;
+    }
+    // When handle_connection finishes, all forks it created (read/write) are automatically cleaned up.
+}
+
 int main() {
-    // 4. 在运行时，创建物理资源和主环境
-    auto main_env = coflux::make_environment<MyScheduler>(MyExecutor{});
-
-    // 5. 启动并阻塞等待根任务完成
-    main_task(main_env).join();
-
+    using task_scheduler = coflux::scheduler<coflux::thread_pool_executor<1024>, coflux::timer_executor>;
+    auto env = coflux::make_environment(task_scheduler{ task_executor{ 3 }, coflux::timer_executor{} });
+    auto server_task = [](auto& env) -> coflux::task<void, task_executor, task_scheduler> {
+        std::cout << "Server task starting 3 concurrent connections...\n";
+        co_await coflux::when_all(
+            handle_connection(co_await coflux::this_task::environment(), 1),
+            handle_connection(co_await coflux::this_task::environment(), 2),
+            handle_connection(co_await coflux::this_task::environment(), 3)
+        );
+        std::cout << "All connections handled.\n";
+        }(env);
+    // RAII block waits for the entire server task to complete
     return 0;
 }
 ```
