@@ -195,7 +195,7 @@ coflux设计了make_fork工厂函数，它可以将任何同步工作打包成fo
 精确地说，make_fork是一个“工厂的工厂"：make_fork的返回值是一个返回fork的lambda表达式：因此make_fork包装的同步工作可以重复使用。
 如果同步工作有状态（如携带捕获列表的lambda），则该状态对所有fork共享，在这种情况下，coflux不保证对状态的访问是原子的。
 ```C++
-auto env = co_await coflux::this_task::environment(); // 见“environment协议”
+auto&& env = co_await coflux::this_task::environment(); // 见“environment协议”
 auto my_work1 = coflux::make_fork<coflux::noop_executor>(fun1, env);
 co_await my_work1(1);
 co_await my_work1(2);

@@ -212,7 +212,7 @@ Precisely, `make_fork` is a "factory of factories": the return value of `make_fo
 If the synchronous work is stateful (e.g., a lambda with a capture list), that state is shared among all `fork`s. In this scenario, Coflux does not guarantee atomic access to the state.
 
 ```c++
-auto env = co_await coflux::this_task::environment(); // See "environment protocol"
+auto&& env = co_await coflux::this_task::environment(); // See "environment protocol"
 auto my_work1 = coflux::make_fork<coflux::noop_executor>(fun1, env);
 co_await my_work1(1);
 co_await my_work1(2);
