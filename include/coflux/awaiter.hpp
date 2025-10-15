@@ -10,6 +10,7 @@
 namespace coflux {
     namespace COFLUX_ATTRIBUTES(COFLUX_DEPRECATED_BECAUSE("Please use make_fork to wrap a syncing invocable object."))
         old_awaiter{
+        /*
         template <typename Ty, typename...Args>
         struct awaiter_async_functor {
             using type = std::function<void(std::function<void(Args...)>)>;
@@ -147,9 +148,10 @@ namespace coflux {
 
             executor executor_;
         };
+        */
     }
 
-        namespace detail {
+    namespace detail {
         struct nonsuspend_awaiter_base {};
 
         struct maysuspend_awaiter_base {
@@ -263,7 +265,7 @@ namespace coflux {
         template <bool Ownership>
         struct environment_awaiter;
 
-        namespace detail {
+        namespace debug {
             template <bool Ownership>
             struct get_forks_counter_awaiter;
 

@@ -20,11 +20,15 @@ namespace coflux {
 
 		environment_info(const environment_info&) = delete;
 		environment_info(environment_info&&) = delete;
+
 		environment_info& operator=(const environment_info&) = delete;
 		environment_info& operator=(environment_info&&) = delete;
 
+		template <bool Ownership>
+		friend struct detail::environment_awaiter;
+
 		detail::promise_fork_base<ParentOwnership>* parent_promise_ = nullptr;
-		std::pmr::memory_resource*					memo_ = nullptr;
+		std::pmr::memory_resource* memo_ = nullptr;
 		scheduler<void>						        parent_scheduler_{};
 	};
 

@@ -47,7 +47,7 @@ namespace coflux {
                         error = error_ptr;
                     }
                     else {
-                        result->second.emplace<I>(std::forward<
+                        result->second.template emplace<I>(std::forward<
                             std::conditional_t<std::is_lvalue_reference_v<std::tuple_element_t<I, task_type>>,
                             std::remove_reference_t<decltype(fork_result)>&,
                             std::remove_reference_t<decltype(fork_result)>>

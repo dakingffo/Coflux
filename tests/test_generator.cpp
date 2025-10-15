@@ -32,7 +32,7 @@ TEST(GeneratorTest, RangesIntegration) {
     auto count_gen = [](int n) -> coflux::generator<int> {
         for (int i = 0; i < n; ++i) co_yield i;
         }(10);
-    
+
     auto view = std::move(count_gen) | std::views::take(5); // mut be an rvalue as a left operand 
     std::vector<int> results;
     for (int val : view) {

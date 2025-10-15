@@ -382,7 +382,7 @@ namespace coflux {
 		}
 		template <bool ParentOwnership, typename ...Args>
 			requires (!Ownership)
-		promise(const environment_info<ParentOwnership>& env, Args&&...args) noexcept
+		promise(const environment_info<ParentOwnership>& env, Args&&...args)
 			: memo_(env.memo_)
 			, scheduler_(env.parent_scheduler_)
 			, executor_(&scheduler_.template get<Executor>()) {
@@ -396,7 +396,7 @@ namespace coflux {
 		}
 		template <typename Functor, bool ParentOwnership, typename ...Args>
 			requires (!Ownership)
-		promise(Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...args) noexcept
+		promise(Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...args)
 			: promise(env, std::forward<Args>(args)...) {
 		}
 		~promise() override = default;
@@ -418,7 +418,7 @@ namespace coflux {
 			return static_cast<std::byte*>(allocated_mem) + required_header_size;
 		}
 
-		static void deallocate(void* ptr, std::size_t size) {
+		static void deallocate(void* ptr, std::size_t size) noexcept {
 			constexpr std::size_t MAX_ALIGNMENT = alignof(std::max_align_t);
 			constexpr std::size_t resource_ptr_size = sizeof(std::pmr::memory_resource*);
 			std::size_t required_header_size = resource_ptr_size;
@@ -454,28 +454,28 @@ namespace coflux {
 		static void* operator new(size_t size, Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...) {
 			return allocate(env.memo_, size);
 		}
-		template <typename ...Args>
-		static void operator delete(void* ptr, size_t size) {
+
+		static void operator delete(void* ptr, size_t size) noexcept {
 			deallocate(ptr, size);
 		}
 		template <typename ...Args>
 			requires Ownership
-		static void operator delete(void* ptr, size_t size, const environment<Scheduler>& env, Args&&...) {
+		static void operator delete(void* ptr, size_t size, const environment<Scheduler>& env, Args&&...) noexcept {
 			deallocate(ptr, size);
 		}
 		template <bool ParentOwnership, typename ...Args>
 			requires (!Ownership)
-		static void operator delete(void* ptr, size_t size, const environment_info<ParentOwnership>& env, Args&&...) {
+		static void operator delete(void* ptr, size_t size, const environment_info<ParentOwnership>& env, Args&&...) noexcept {
 			deallocate(ptr, size);
 		}
 		template <typename Functor, typename ...Args>
 			requires Ownership
-		static void operator delete(void* ptr, size_t size, Functor&& /* ignored_this */, const environment<Scheduler>& env, Args&&...) {
+		static void operator delete(void* ptr, size_t size, Functor&& /* ignored_this */, const environment<Scheduler>& env, Args&&...) noexcept {
 			deallocate(ptr, size);
 		}
 		template <typename Functor, bool ParentOwnership, typename ...Args>
 			requires (!Ownership)
-		static void operator delete(void* ptr, size_t size, Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...) {
+		static void operator delete(void* ptr, size_t size, Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...) noexcept {
 			deallocate(ptr, size);
 		}
 

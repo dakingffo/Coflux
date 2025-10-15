@@ -272,12 +272,12 @@ namespace coflux {
                 return false;
             }
 
-            auto&& await_resume() const noexcept {
-                return environment_info<Ownership>(parent_promise_, memo_, parent_scheduler_);
+            environment_info<Ownership> await_resume() const noexcept {
+                return { parent_promise_, memo_, parent_scheduler_ };
             }
 
             promise_fork_base<Ownership>* parent_promise_;
-            std::pmr::memory_resource*    memo_;
+            std::pmr::memory_resource* memo_;
             scheduler<void>			      parent_scheduler_;
         };
 

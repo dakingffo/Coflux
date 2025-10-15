@@ -11,11 +11,11 @@ TEST(ChannelTest, UnbufferedSendReceive) {
     auto test_task = [](auto env) -> coflux::task<int, TestExecutor, TestScheduler> {
         coflux::channel<int[]> ch;
 
-        auto producer = [](auto env, auto& ch) -> coflux::fork<void, TestExecutor> {
+        auto producer = [](auto&& env, auto& ch) -> coflux::fork<void, TestExecutor> {
             co_await(ch << 42);
             };
 
-        auto consumer = [](auto env, auto& ch) -> coflux::fork<int, TestExecutor> {
+        auto consumer = [](auto&& env, auto& ch) -> coflux::fork<int, TestExecutor> {
             int val;
             co_await(ch >> val);
             co_return val;
@@ -37,17 +37,17 @@ TEST(ChannelTest, CloseUnblocksWaitingReader) {
     auto test_task = [](auto env) -> coflux::task<bool, TestExecutor, TestScheduler> {
         coflux::channel<int[1]> ch;
 
-        auto consumer = [](auto env, auto& ch) -> coflux::fork<bool, TestExecutor> {
+        auto consumer = [](auto&& env, auto& ch) -> coflux::fork<bool, TestExecutor> {
             int val;
             // 当channel被关闭后，这个co_await应该返回false
             bool success = co_await(ch >> val);
             co_return success;
             };
 
-        auto c_fork = consumer(co_await coflux::this_task::environment(), ch);
+        auto&& c_fork = consumer(co_await coflux::this_task::environment(), ch);
 
         // 另起一个fork去关闭channel
-        [](auto env, auto& ch) -> coflux::fork<void, TestExecutor> {
+        [](auto&& env, auto& ch) -> coflux::fork<void, TestExecutor> {
             co_await std::chrono::milliseconds(50);
             ch.close();
             }(co_await coflux::this_task::environment(), ch);
@@ -63,7 +63,7 @@ TEST(ChannelTest, BufferedMpmcStress) {
     using StressScheduler = coflux::scheduler<StressExecutor>;
     auto env = coflux::make_environment<StressScheduler>(StressExecutor{ 4 });
 
-    auto test_task = [](auto env) -> coflux::task<int, StressExecutor, StressScheduler> {
+    auto test_task = [](auto&& env) -> coflux::task<int, StressExecutor, StressScheduler> {
         coflux::channel<int[10]> ch;
         std::atomic<int> sum = 0;
         const int items_per_producer = 1000;
@@ -81,7 +81,7 @@ TEST(ChannelTest, BufferedMpmcStress) {
             }
             };
 
-        auto env_fork = co_await coflux::this_task::environment();
+        auto&& env_fork = co_await coflux::this_task::environment();
         // 启动生产者和消费者
         consumer(env_fork, sum);
         consumer(env_fork, sum);

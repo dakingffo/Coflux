@@ -155,7 +155,7 @@ namespace coflux {
 			template <typename TaskType>
 			friend struct promise;
 			template <typename T, executive E>
-			friend struct awaiter;
+			friend struct ::coflux::awaiter;
 
 			template <typename Func>
 			void When_any_all_callback(Func && func) {
@@ -323,10 +323,14 @@ namespace coflux {
 	}
 
 	template <executive_or_certain_executor Executor = noop_executor, bool Ownership, typename Func>
-	auto make_fork(Func&& func, environment_info<Ownership> info) {
-		return [func = std::forward<Func>(func), info](auto&&...args) mutable {
+	auto make_fork(Func&& func, const environment_info<Ownership>& info) {
+		return [func = std::forward<Func>(func),
+			parent_promise = info.parent_promise_,
+			memo = info.memo_,
+			sch = info.parent_scheduler_
+		](auto&&...args) mutable {
 			return detail::fork_factory<fork<std::invoke_result_t<Func, decltype(args)...>, Executor>>(
-				info, func, std::forward<decltype(args)>(args)...);
+				environment_info<Ownership>(parent_promise, memo, sch), func, std::forward<decltype(args)>(args)...);
 			};
 	}
 

@@ -24,7 +24,7 @@ coflux::fork<void, task_executor> async_write_response(auto&&, const std::string
 // 使用结构化并发处理单个连接
 coflux::fork<void, task_executor> handle_connection(auto&&, int client_id) {
     try {
-        auto env = co_await coflux::this_fork::environment();
+        auto&& env = co_await coflux::this_fork::environment();
         auto request = co_await async_read_request(env, client_id);
         auto processed_response = request + " [processed by server]";
         co_await async_write_response(env, processed_response);
@@ -77,7 +77,7 @@ int main() {
                 std::cout << "All connections handled.\n";
                 }(env);
             // RAII阻塞等待整个服务器任务完成
-        }  
+        }
         std::cout << std::endl;
         {
             auto get_user_id = [](int x) { return x * 2; };
@@ -88,8 +88,8 @@ int main() {
             // 构建a->b->c且a->c的有向无环图图
             auto DAG_task = [&](auto&&) -> coflux::task<void, task_executor> {
                 std::cout << "Dag task starting find user's names by their ids...\n";
-                auto my_env = co_await coflux::this_task::environment();
-                auto get_user_id_fork = coflux::make_fork<task_executor>(get_user_id, my_env);
+                auto&& my_env = co_await coflux::this_task::environment();
+                auto&& get_user_id_fork = coflux::make_fork<task_executor>(get_user_id, my_env);
                 for (int x = 0; x < 5; x++) {
                     auto id = get_user_id_fork(x).get_view();
                     std::cout << co_await(id) << " : " << co_await(get_user_name(my_env, id)) << '\n';

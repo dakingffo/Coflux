@@ -2,8 +2,8 @@
 #include <coflux/combiner.hpp>
 #include <string>
 #include <chrono>
+#include <algorithm>
 #include <iostream>
-#include <ranges>
 #include <random>
 
 using work_executor = coflux::thread_pool_executor<>;
@@ -13,7 +13,7 @@ coflux::fork<std::pair<int, int>, work_executor> horse(auto&&, int id, std::mt19
 	int time = mt() % 2000 + 500;
 	co_await std::chrono::milliseconds(time);
 	std::cout << "horse" << id << " has reached the finish line!\n";
-	co_return std::pair{time, id};
+	co_return std::pair{ time, id };
 }
 
 void horse_race() {
@@ -29,7 +29,7 @@ void horse_race() {
 			horse(co_await coflux::this_task::environment(), 3, mt),
 			horse(co_await coflux::this_task::environment(), 4, mt)
 		);
-		std::ranges::sort(score);
+		std::sort(score, score + 4);
 		std::endl(std::cout);
 		for (auto& s : score) {
 			std::cout << "horse" << s.second << " : " << s.first << '\n';

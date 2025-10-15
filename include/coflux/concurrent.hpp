@@ -511,6 +511,7 @@ namespace coflux {
 
 	namespace COFLUX_DEPRECATED_BECAUSE("This is an early placeholder tool from another project")
 		sept{
+		/*
 		template <typename TaskQueue = concurrency_queue<std::function<void()>, 1024>>
 		class thread_pool;
 
@@ -721,6 +722,7 @@ namespace coflux {
 			std::atomic_uint					  queue_size_ = 0;
 			static constexpr std::size_t	      default_queue_size_threshold_ = Max_queue_size;
 		};
+		*/
 	}
 }
 

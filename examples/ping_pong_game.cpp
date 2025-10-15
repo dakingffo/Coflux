@@ -10,14 +10,14 @@ using scheduler = coflux::scheduler<coflux::noop_executor>;
 coflux::fork<void, coflux::noop_executor> player(auto&&, std::string name, coflux::channel<int[]>& ball, std::mt19937& mt) {
 	bool winner = true;
 	if (name == "Alice")
-		co_await (ball << (mt() % 1000));
+		co_await(ball << (mt() % 1000));
 	while (ball.active()) {
 		int get;
-		co_await (ball >> get);
+		co_await(ball >> get);
 		int num = mt() % 1000;
 		if (num > get / 10) {
 			std::cout << (num % 2 ? "ping!\n" : "pong!\n");
-			co_await (ball << (mt() % 1000));
+			co_await(ball << (mt() % 1000));
 		}
 		else {
 			winner = false;

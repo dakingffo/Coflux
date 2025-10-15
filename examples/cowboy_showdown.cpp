@@ -16,7 +16,7 @@ coflux::fork<std::string, coflux::new_thread_executor> cowboy(auto&&, std::strin
 	co_return name + " fire!";
 }
 
-void cowboy_showdown(){
+void cowboy_showdown() {
 	std::cout << "==========" << "cowboy_showdown" << "==========\n";
 	auto env = coflux::make_environment(scheduler{});
 	auto task = [](auto&&, int times)->coflux::task<void, coflux::new_thread_executor, scheduler> {
