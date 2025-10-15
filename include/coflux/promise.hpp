@@ -129,13 +129,11 @@ namespace coflux {
 			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) callback_type  cancellation_callback_;
 
 #if COFLUX_DEBUG
-			static std::atomic_size_t task_counter;
+			inline static std::atomic_size_t task_counter;
 			std::size_t        id_ = -1;
 
 			std::coroutine_handle<promise_fork_base<true>> parent_task_handle_ = nullptr;
 		};
-		template <>
-		std::atomic_size_t promise_fork_base<true>::task_counter = 0;
 #else  
 	};
 #endif
@@ -487,8 +485,8 @@ namespace coflux {
 			return task_type(std::coroutine_handle<promise>::from_promise(*this));
 		}
 
-		auto&& get_environment() noexcept {
-			return environment_info<Ownership>(this, memo_, scheduler_);
+		environment_info<Ownership> get_environment() noexcept {
+			return { this, memo_, scheduler_ };
 		}
 
 		auto await_transform(detail::get_scheduler_awaiter<Ownership, scheduler<void>>&& awaiter) noexcept {
