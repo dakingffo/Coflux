@@ -104,6 +104,7 @@ namespace coflux {
 					fork = next;
 				}
 				children_head_ = nullptr;
+				children_counter_ = 0;
 			}
 
 			void join_forks() {

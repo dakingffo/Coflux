@@ -61,7 +61,7 @@ static void BM_PmrPool_ForkCreationAndDestruction(benchmark::State& state) {
             for (long long i = 0; i < forks_to_create; ++i) {
                 trivial_fork(co_await coflux::this_task::environment());
             }
-            //co_await coflux::this_task::destroy_forks();
+            co_await coflux::this_task::destroy_forks();
             state.PauseTiming();
 
             }(env);
