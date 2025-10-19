@@ -95,7 +95,13 @@ int main() {
                     auto id = get_user_id_fork(x).get_view();
                     std::cout << co_await(id) << " : " << co_await(get_user_name(my_env, id)) << '\n';
                 }
-                }(coflux::make_environment(coflux::scheduler{ task_executor{ 3 } }));
+                }(coflux::make_environment(coflux::scheduler{ task_executor{ 3 } }))
+                    .then([]() {
+                        std::cout << "This is a DAG demo!\n";
+                        })
+                    .on_void([]() {
+                        std::cout << "B get C by view!\n";
+                        });
         }
 
     }

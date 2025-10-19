@@ -171,7 +171,7 @@ namespace coflux {
 			basic_task&& then(Func&& func)&& {
 				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 					handle_.promise().then(std::forward<Func>(func));
-					return *this;
+					return std::move(*this);
 				}
 				else {
 					Null_handle_error();
@@ -183,7 +183,7 @@ namespace coflux {
 			basic_task&& on_value(Func&& func)&& {
 				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 					handle_.promise().on_value(std::forward<Func>(func));
-					return *this;
+					return std::move(*this);
 				}
 				else {
 					Null_handle_error();
@@ -195,7 +195,7 @@ namespace coflux {
 			basic_task&& on_void(Func&& func)&& {
 				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 					handle_.promise().on_void(std::forward<Func>(func));
-					return *this;
+					return std::move(*this);
 				}
 				else {
 					Null_handle_error();
@@ -206,7 +206,7 @@ namespace coflux {
 			basic_task&& on_error(Func&& func)&& {
 				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 					handle_.promise().on_error(std::forward<Func>(func));
-					return *this;
+					return std::move(*this);
 				}
 				else {
 					Null_handle_error();
@@ -217,7 +217,7 @@ namespace coflux {
 			basic_task&& on_cancel(Func&& func)&& {
 				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 					handle_.promise().on_cancel(std::forward<Func>(func));
-					return *this;
+					return std::move(*this);
 				}
 				else {
 					Null_handle_error();
@@ -352,33 +352,33 @@ namespace coflux {
 		template <typename Func>
 		fork_view&& then(Func&& func)&& {
 			handle_.promise().then(std::forward<Func>(func));
-			return *this;
+			return std::move(*this);
 		}
 
 		template <typename Func>
 			requires std::is_object_v<value_type>
 		fork_view&& on_value(Func&& func)&& {
 			handle_.promise().on_value(std::forward<Func>(func));
-			return *this;
+			return std::move(*this);
 		}
 
 		template <typename Func>
 			requires std::is_void_v<value_type>
 		fork_view&& on_void(Func&& func)&& {
 			handle_.promise().on_void(std::forward<Func>(func));
-			return *this;
+			return std::move(*this);
 		}
 
 		template <typename Func>
 		fork_view&& on_error(Func&& func)&& {
 			handle_.promise().on_error(std::forward<Func>(func));
-			return *this;
+			return std::move(*this);
 		}
 
 		template <typename Func>
 		fork_view&& on_cancel(Func&& func)&& {
 			handle_.promise().on_cancel(std::forward<Func>(func));
-			return *this;
+			return std::move(*this);
 		}
 
 	private:

@@ -227,7 +227,7 @@ namespace coflux {
 			using result_type = Ty;
 			using callback_type = std::function<void(const result_proxy&)>;
 
-			promise_result_base() : result_(this->st_) {}
+			promise_result_base() {}
 			~promise_result_base() override = default;
 
 			void unhandled_exception() {
