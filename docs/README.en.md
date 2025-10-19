@@ -121,7 +121,6 @@ include(FetchContent)
 FetchContent_Declare(
     coflux
     GIT_REPOSITORY [https://github.com/dakingffo/coflux.git](https://github.com/dakingffo/coflux.git)
-    GIT_TAG        v1.0.0 # Or a specific commit hash
 )
 FetchContent_MakeAvailable(coflux)
 

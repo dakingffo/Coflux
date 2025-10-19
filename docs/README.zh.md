@@ -120,7 +120,6 @@ include(FetchContent)
 FetchContent_Declare(
     coflux
     GIT_REPOSITORY [https://github.com/dakingffo/coflux.git](https://github.com/dakingffo/coflux.git)
-    GIT_TAG        v0.1.0 # 或者一个具体的commit hash
 )
 FetchContent_MakeAvailable(coflux)
 
