@@ -16,7 +16,7 @@ namespace coflux {
 			using value_type = Ty;
 			using error_type = std::exception_ptr;
 
-			result(std::atomic<status>& st) : error_(nullptr), st_(st) {}
+			result() : error_(nullptr), st_(running) {}
 			~result() {
 				if (st_.load(std::memory_order_acquire) == completed) {
 					value_.~value_type();
@@ -69,11 +69,11 @@ namespace coflux {
 				}
 			}
 
+			std::atomic<status> st_;
 			union {
 				value_type value_;
 				error_type error_;
 			};
-			std::atomic<status>& st_;
 		};
 
 		template <>
@@ -81,7 +81,7 @@ namespace coflux {
 			using value_type = void;
 			using error_type = std::exception_ptr;
 
-			result(std::atomic<status>& st) : error_(nullptr), st_(st) {}
+			result() : error_(nullptr), st_(running) {}
 			~result() = default;
 
 			result(const result&) = delete;
@@ -119,9 +119,8 @@ namespace coflux {
 				}
 			}
 
+			std::atomic<status> st_;
 			error_type error_;
-			std::atomic<status>& st_;
-
 		};
 		//						 BasicTask										Generator
 		//	
@@ -198,23 +197,23 @@ namespace coflux {
 				}
 				already_final_.store(true, std::memory_order_release);
 			}
-
-			std::atomic<status>  st_ = running;
-			std::atomic_bool     already_final_ = false;
-			std::stop_source     stop_source_;
-			handle_type          children_head_ = nullptr;
-			std::mutex			 mtx_;
-
-			std::binary_semaphore sem_{0};
+		
+			std::stop_source      stop_source_;
+			handle_type           children_head_ = nullptr;
+			std::mutex	          mtx_;
+			
 			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) brother_handle			  brothers_next_ {};
 			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) cancellaton_callback_type cancellation_callback_;
+			
+			std::atomic_bool      already_final_ = false;
+			std::binary_semaphore sem_{ 0 };
 
 #if COFLUX_DEBUG
-			std::size_t          children_counter_ = 0;
-			inline static std::atomic_size_t task_counter;
-			std::size_t        id_ = -1;
-
+			std::size_t									   children_counter_   = 0;
+			std::size_t									   id_				   = -1;
 			std::coroutine_handle<promise_fork_base<true>> parent_task_handle_ = nullptr;
+
+			inline static std::atomic_size_t task_counter;
 		};
 #else  
 	};
@@ -342,7 +341,7 @@ namespace coflux {
 			using result_type = std::monostate;
 			using callback_type = std::function<void(const result_proxy&)>;
 
-			promise_result_base() : result_(this->st_) {}
+			promise_result_base() {}
 			~promise_result_base() = default;
 
 			void unhandled_exception() {
