@@ -35,7 +35,7 @@ namespace coflux {
 			~basic_task() {
 				if constexpr (Ownership) {
 					Nothrow_join();
-					destroy();
+					Destroy();
 				}
 			}
 
@@ -84,15 +84,13 @@ namespace coflux {
 
 			void join() {
 				Nothrow_join();
-				handle_.promise().try_throw();
+				if (get_status() == failed) {
+					handle_.promise().try_throw();
+				}
 			}
 
 			bool done() const noexcept {
 				return handle_ ? !(get_status() == running || get_status() == suspending) : true;
-			}
-
-			bool ready() const noexcept {
-				return handle_ && get_status() == completed ? handle_.promise().result_.has_value() : false;
 			}
 
 			executor_type& get_executor() const {
@@ -105,7 +103,7 @@ namespace coflux {
 			}
 
 			status get_status() const noexcept {
-				return handle_ ? handle_.promise().status_.load(std::memory_order_acquire) : invalid;
+				return handle_ ? status(handle_.promise().get_status()) : invalid;
 			}
 
 			std::coroutine_handle<> get_handle() const noexcept {
@@ -113,32 +111,116 @@ namespace coflux {
 			}
 
 			template <typename Func>
-			void then(Func && func) const {
+			basic_task& then(Func&& func)& {
 				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					handle_.promise().on_completed(std::forward<Func>(func));
+					handle_.promise().then(std::forward<Func>(func));
+					return *this;
+				}
+				else {
+					Null_handle_error();
 				}
 			}
 
 			template <typename Func>
 				requires std::is_object_v<value_type>
-			void then_with_result_or_error(Func && func) const {
+			basic_task& on_value(Func&& func)& {
 				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					handle_.promise().on_completed_with_result_or_error(std::forward<Func>(func));
+					handle_.promise().on_value(std::forward<Func>(func));
+					return *this;
+				}
+				else {
+					Null_handle_error();
 				}
 			}
 
 			template <typename Func>
 				requires std::is_void_v<value_type>
-			void then_with_error(Func && func) const {
+			basic_task& on_void(Func&& func)& {
 				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					handle_.promise().on_completed_with_error(std::forward<Func>(func));
+					handle_.promise().on_void(std::forward<Func>(func));
+					return *this;
+				}
+				else {
+					Null_handle_error();
 				}
 			}
 
-			void destroy() {
-				if (handle_) {
-					handle_.destroy();
-					handle_ = nullptr;
+			template <typename Func>
+			basic_task& on_error(Func && func)& {
+				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
+					handle_.promise().on_error(std::forward<Func>(func));
+					return *this;
+				}
+				else {
+					Null_handle_error();
+				}
+			}
+
+			template <typename Func>
+			basic_task& on_cancel(Func&& func)& {
+				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
+					handle_.promise().on_cancel(std::forward<Func>(func));
+					return *this;
+				}
+				else {
+					Null_handle_error();
+				}
+			}
+
+			template <typename Func>
+			basic_task&& then(Func&& func)&& {
+				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
+					handle_.promise().then(std::forward<Func>(func));
+					return *this;
+				}
+				else {
+					Null_handle_error();
+				}
+			}
+
+			template <typename Func>
+				requires std::is_object_v<value_type>
+			basic_task&& on_value(Func&& func)&& {
+				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
+					handle_.promise().on_value(std::forward<Func>(func));
+					return *this;
+				}
+				else {
+					Null_handle_error();
+				}
+			}
+
+			template <typename Func>
+				requires std::is_void_v<value_type>
+			basic_task&& on_void(Func&& func)&& {
+				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
+					handle_.promise().on_void(std::forward<Func>(func));
+					return *this;
+				}
+				else {
+					Null_handle_error();
+				}
+			}
+
+			template <typename Func>
+			basic_task&& on_error(Func&& func)&& {
+				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
+					handle_.promise().on_error(std::forward<Func>(func));
+					return *this;
+				}
+				else {
+					Null_handle_error();
+				}
+			}
+
+			template <typename Func>
+			basic_task&& on_cancel(Func&& func)&& {
+				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
+					handle_.promise().on_cancel(std::forward<Func>(func));
+					return *this;
+				}
+				else {
+					Null_handle_error();
 				}
 			}
 
@@ -157,30 +239,21 @@ namespace coflux {
 			template <typename T, executive E>
 			friend struct ::coflux::awaiter;
 
-			template <typename Func>
-			void When_any_all_callback(Func && func) {
-				if constexpr (std::is_object_v<value_type>) {
-					then_with_result_or_error(std::forward<Func>(func));
-				}
-				else {
-					then_with_error(std::forward<Func>(func));
+			void Destroy() {
+				if (handle_) {
+					handle_.destroy();
+					handle_ = nullptr;
 				}
 			}
 
+			template <typename Func>
+			void When_any_all_callback(Func&& func) {
+				handle_.promise().emplace_or_invoke_callback(std::forward<Func>(func));
+			}
+
 			void Nothrow_join() {
-				if (!done()) {
-					// 临时信号量用以阻塞当前线程直到协程完成。
-					// A temporary semaphore is used to block the current thread until the coroutine is completed.
-					std::binary_semaphore smp{ 0 };
-					then([&smp]() {
-						smp.release();
-						});
-					// 竞态条件：如果协程在第一次状态判断后，then注册回调的过程中完成了，那么不应该acquire信号量，所以再判断一次。
-					// race condition: if the coroutine is completed after the first status check and during the process of registering the callback with then,
-					// we should not acquire the semaphore, so we check again.
-					if (!done()) {
-						smp.acquire();
-					}
+				if (handle_) {
+					handle_.promise().final_semaphore_acquire();
 				}
 			}
 
@@ -240,35 +313,72 @@ namespace coflux {
 			return handle_ ? !(get_status() == running || get_status() == suspending) : true;
 		}
 
-		bool ready() const noexcept {
-			return handle_ && get_status() == completed ? handle_.promise().result_.has_value() : false;
-		}
-
 		status get_status() const noexcept {
-			return handle_ ? handle_.promise().status_.load(std::memory_order_acquire) : invalid;
+			return handle_ ? status(handle_.promise().get_status()) : invalid;
 		}
 
 		template <typename Func>
-		void then(Func && func) const {
-			if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-				handle_.promise().on_completed(std::forward<Func>(func));
-			}
+		fork_view& then(Func&& func)& {
+			handle_.promise().then(std::forward<Func>(func));
+			return *this;
 		}
 
 		template <typename Func>
 			requires std::is_object_v<value_type>
-		void then_with_result_or_error(Func && func) const {
-			if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-				handle_.promise().on_completed_with_result_or_error(std::forward<Func>(func));
-			}
+		fork_view& on_value(Func&& func)& {
+			handle_.promise().on_value(std::forward<Func>(func));
+			return *this;
 		}
 
 		template <typename Func>
 			requires std::is_void_v<value_type>
-		void then_with_error(Func && func)const {
-			if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-				handle_.promise().on_completed_with_error(std::forward<Func>(func));
-			}
+		fork_view& on_void(Func&& func)& {
+			handle_.promise().on_void(std::forward<Func>(func));
+			return *this;
+		}
+
+		template <typename Func>
+		fork_view& on_error(Func&& func)& {
+			handle_.promise().on_error(std::forward<Func>(func));
+			return *this;
+		}
+
+		template <typename Func>
+		fork_view& on_cancel(Func&& func)& {
+			handle_.promise().on_cancel(std::forward<Func>(func));
+			return *this;
+		}
+
+		template <typename Func>
+		fork_view&& then(Func&& func)&& {
+			handle_.promise().then(std::forward<Func>(func));
+			return *this;
+		}
+
+		template <typename Func>
+			requires std::is_object_v<value_type>
+		fork_view&& on_value(Func&& func)&& {
+			handle_.promise().on_value(std::forward<Func>(func));
+			return *this;
+		}
+
+		template <typename Func>
+			requires std::is_void_v<value_type>
+		fork_view&& on_void(Func&& func)&& {
+			handle_.promise().on_void(std::forward<Func>(func));
+			return *this;
+		}
+
+		template <typename Func>
+		fork_view&& on_error(Func&& func)&& {
+			handle_.promise().on_error(std::forward<Func>(func));
+			return *this;
+		}
+
+		template <typename Func>
+		fork_view&& on_cancel(Func&& func)&& {
+			handle_.promise().on_cancel(std::forward<Func>(func));
+			return *this;
 		}
 
 	private:
@@ -290,19 +400,8 @@ namespace coflux {
 		}
 
 		void Nothrow_join() {
-			if (!done()) {
-				// 临时信号量用以阻塞当前线程直到协程完成。
-				// A temporary semaphore is used to block the current thread until the coroutine is completed.
-				std::binary_semaphore smp{ 0 };
-				then([&smp]() {
-					smp.release();
-					});
-				// 竞态条件：如果协程在第一次状态判断后，then注册回调的过程中完成了，那么不应该acquire信号量，所以再判断一次。
-				// race condition: if the coroutine is completed after the first status check and during the process of registering the callback with then,
-				// we should not acquire the semaphore, so we check again.
-				if (!done()) {
-					smp.acquire();
-				}
+			if (handle_ && !handle_.done()) {
+				handle_.promise().final_semaphore_acquire();
 			}
 		}
 

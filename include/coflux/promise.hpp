@@ -11,59 +11,135 @@
 
 namespace coflux {
 	namespace detail {
-		//						 BasicTask										Generator
-		//	
-		//					promise_callback_base							promise_yield_base
-		//							 ↓												↓
-		//					  promise_fork_base   		   					   promise_base
-		//							 ↓												↓
-		//					  promise_result_base								  promise
-		//							 ↓								                
-		//					    promise_base	     	 				   
-		//							 ↓												
-		//					      promise		
+		template <typename Ty>
+		struct result {
+			using value_type = Ty;
+			using error_type = std::exception_ptr;
 
-		struct promise_callback_base {
-			template <typename Func>
-			void on_completed(Func&& func) {
-				status st = status_.load(std::memory_order_acquire);
-				if (!(st == running || st == suspending)) {
-					func();
-					return;
-				}
-				std::unique_lock<std::mutex> lock(mtx_);
-				st = status_.load(std::memory_order_acquire);
-				if (!(st == running || st == suspending)) {
-					lock.unlock();
-					func();
-				}
-				else {
-					callbacks_.emplace_back(std::forward<Func>(func));
+			result(std::atomic<status>& st) : error_(nullptr), st_(st) {}
+			~result() {
+				if (st_.load(std::memory_order_acquire) == completed) {
+					value_.~value_type();
 				}
 			}
 
-			void invoke_callbacks() {
-				std::vector<std::function<void()>> cbs;
-				{
-					std::lock_guard<std::mutex> guard(mtx_);
-					cbs.swap(callbacks_);
-				}
-				for (auto& cb : cbs) {
-					cb();
+			result(const result&) = delete;
+			result(result&&) = delete;
+			result& operator=(const result&) = delete;
+			result& operator=(result&&) = delete;
+
+			template <typename Ref>
+			void emplace_value(Ref&& ref) {
+				new (std::addressof(value_)) value_type(std::forward<Ref>(ref));
+				st_.store(completed, std::memory_order_release);
+			}
+
+			void emplace_error(error_type&& err) {
+				new (std::addressof(error_)) error_type(std::move(err));
+				st_.store(failed, std::memory_order_release);
+			}
+
+			void emplace_cancel(cancel_exception&& err) {
+				new (std::addressof(error_)) error_type(std::make_exception_ptr(std::move(err)));
+				st_.store(cancelled, std::memory_order_release);
+			}
+
+			std::atomic<status>& get_status() {
+				return st_;
+			}
+
+			const value_type& value()const& {
+				try_throw();
+				return value_;
+			}
+
+			value_type&& value()&& {
+				try_throw();
+				return std::move(value_);
+			}
+
+			const error_type& error()const& {
+				return error_;
+			}
+
+			void try_throw() const {
+				if (st_.load(std::memory_order_acquire) != completed)
+					COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+					std::rethrow_exception(error_);
 				}
 			}
 
-			std::vector<std::function<void()>> callbacks_;
-			std::mutex						   mtx_;
-			std::atomic<status>				   status_ = suspending;
+			union {
+				value_type value_;
+				error_type error_;
+			};
+			std::atomic<status>& st_;
 		};
 
+		template <>
+		struct result<void> {
+			using value_type = void;
+			using error_type = std::exception_ptr;
+
+			result(std::atomic<status>& st) : error_(nullptr), st_(st) {}
+			~result() = default;
+
+			result(const result&) = delete;
+			result(result&&) = delete;
+			result& operator=(const result&) = delete;
+			result& operator=(result&&) = delete;
+
+			void emplace_void() {
+				st_.store(completed, std::memory_order_release);
+			}
+
+			void emplace_error(error_type&& err) {
+				error_ = std::move(err);
+				st_.store(failed, std::memory_order_release);
+			}
+
+			void emplace_cancel(cancel_exception&& err) {
+				error_ = std::make_exception_ptr(std::move(err));
+				st_.store(cancelled, std::memory_order_release);
+			}
+
+			std::atomic<status>& get_status() {
+				return st_;
+			}
+
+			const error_type& error()const& {
+				return error_;
+
+			}
+
+			void try_throw() {
+				if (st_.load(std::memory_order_acquire) != completed)
+					COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+					std::rethrow_exception(error_);
+				}
+			}
+
+			error_type error_;
+			std::atomic<status>& st_;
+
+		};
+		//						 BasicTask										Generator
+		//	
+		//					 promise_fork_base				            	promise_yield_base
+		//							 ↓												↓
+		//					promise_result_base  		   					   promise_base
+		//							 ↓												↓
+		//				        promise_base								     promise
+		//							 ↓								                
+		//					      promise  	
+
 		template <bool Ownership>
-		struct promise_fork_base : promise_callback_base {
-			using handle_type = std::coroutine_handle<promise_fork_base<false>>;
-			using callback_type = std::conditional_t<Ownership, std::monostate,
+		struct promise_fork_base {
+			using handle_type               = std::coroutine_handle<promise_fork_base<false>>;
+			using final_callback_type       = std::function<void()>;
+			using brother_handle            = std::conditional_t<Ownership, std::monostate, handle_type>;
+			using cancellaton_callback_type = std::conditional_t<Ownership, std::monostate,
 				std::optional<std::stop_callback<std::function<void()>>>>;
-			using brother_handle = std::conditional_t<Ownership, std::monostate, handle_type>;
 
 			promise_fork_base() {
 #if COFLUX_DEBUG
@@ -74,15 +150,13 @@ namespace coflux {
 #endif
 			}
 			virtual ~promise_fork_base() {
-				join_forks();
 				destroy_forks();
 			}
 
 			void fork_child(handle_type new_children) noexcept {
-				children_counter_++;
 				auto& child_promise = new_children.promise();
 #if COFLUX_DEBUG
-				child_promise.id_ = children_counter_;
+				child_promise.id_ = children_counter_++;
 				child_promise.parent_task_handle_ = this->parent_task_handle_;
 #endif
 				child_promise.cancellation_callback_.emplace(
@@ -99,37 +173,44 @@ namespace coflux {
 				handle_type next = nullptr;
 				handle_type fork = children_head_;
 				while (fork) {
-					next = fork.promise().brothers_next_;
+					auto& fork_promise = fork.promise();
+					next = fork_promise.brothers_next_;
+					fork_promise.final_semaphore_acquire();
 					fork.destroy();
 					fork = next;
 				}
 				children_head_ = nullptr;
+#if COFLUX_DEBUG
 				children_counter_ = 0;
+#endif
 			}
 
-			void join_forks() {
-				std::latch wait_latch(static_cast<std::ptrdiff_t>(children_counter_));
-				handle_type next = nullptr;
-				handle_type fork = children_head_;
-				while (fork) {
-					auto& fork_promise = fork.promise();
-					next = fork_promise.brothers_next_;
-					fork_promise.on_completed([&wait_latch]() {
-						wait_latch.count_down();
-						});
-					fork = next;
+			void final_semaphore_acquire() {
+				if (!already_final_.load(std::memory_order_acquire)) {
+					sem_.acquire();
 				}
-				wait_latch.wait();
 			}
 
-			std::stop_source stop_source_;
-			handle_type      children_head_ = nullptr;
-			std::size_t      children_counter_ = 0;
+			void final_semaphore_release() {
+				bool expected = false;
+				if (already_final_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+					sem_.release();
+				}
+				already_final_.store(true, std::memory_order_release);
+			}
 
-			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) brother_handle brothers_next_ {};
-			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) callback_type  cancellation_callback_;
+			std::atomic<status>  st_ = running;
+			std::atomic_bool     already_final_ = false;
+			std::stop_source     stop_source_;
+			handle_type          children_head_ = nullptr;
+			std::mutex			 mtx_;
+
+			std::binary_semaphore sem_{0};
+			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) brother_handle			  brothers_next_ {};
+			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) cancellaton_callback_type cancellation_callback_;
 
 #if COFLUX_DEBUG
+			std::size_t          children_counter_ = 0;
 			inline static std::atomic_size_t task_counter;
 			std::size_t        id_ = -1;
 
@@ -141,152 +222,225 @@ namespace coflux {
 
 		template <typename Ty, bool Ownership>
 		struct promise_result_base : public promise_fork_base<Ownership> {
-			using value_type = Ty;
-			using result_proxy = std::optional<Ty>;
+			using fork_base = promise_fork_base<Ownership>;
+			using result_proxy = result<Ty>;
+			using value_type = typename result_proxy::value_type;
 			using result_type = Ty;
+			using callback_type = std::function<void(const result_proxy&)>;
 
-			using promise_callback_base::invoke_callbacks;
-			using promise_callback_base::on_completed;
-
-			promise_result_base() = default;
-			virtual ~promise_result_base() = default;
-
-			void invoke_result_or_error_callback() {
-				if (result_or_error_callback_) {
-					std::function<void(result_proxy&, std::exception_ptr)> result_cb;
-					{
-						std::lock_guard<std::mutex> guard(this->mtx_);
-						std::swap(result_cb, result_or_error_callback_);
-					}
-					if (result_cb) {
-						result_cb(result_, error_);
-					}
-				}
-			}
-
-			template <typename Func>
-			void on_completed_with_result_or_error(Func&& func) {
-				if (this->status_.load(std::memory_order_acquire) == completed) {
-					func(result_, error_);
-					return;
-				}
-				std::unique_lock<std::mutex> lock(this->mtx_);
-				if (this->status_.load(std::memory_order_acquire) == completed) {
-					lock.unlock();
-					func(result_, error_);
-				}
-				else {
-					result_or_error_callback_ = std::forward<Func>(func);
-				}
-			}
+			promise_result_base() : result_(this->st_) {}
+			~promise_result_base() override = default;
 
 			void unhandled_exception() {
-				error_ = std::current_exception();
-				this->status_ = failed;
+				result_.emplace_error(std::current_exception());
 			}
 
 			template <typename Ret>
 			void return_value(Ret&& value) {
-				result_.emplace(std::forward<Ret>(value));
-				this->status_ = completed;
+				result_.emplace_value(std::forward<Ret>(value));
 			}
 
-			void cancel(const cancel_exception<Ownership>& cancel_msg) {
-				error_ = std::make_exception_ptr(cancel_msg);
-				this->status_ = cancelled;
+			void cancel() {
+				result_.emplace_cancel(cancel_exception(Ownership));
 				this->stop_source_.request_stop();
 			}
 
 			const value_type& get_result()& {
-				try_throw();
-				return std::move(result_).value();
+				return result_.value();
 			}
 
 			value_type&& get_result()&& {
-				try_throw();
 				return std::move(result_).value();
 			}
 
-			void try_throw() {
-				if (error_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-					std::rethrow_exception(error_);
-				}
+			std::atomic<status>& get_status() {
+				return result_.get_status();
 			}
 
-			result_proxy										   result_;
-			std::exception_ptr									   error_;
-			std::function<void(result_proxy&, std::exception_ptr)> result_or_error_callback_;
-		};
+			void try_throw() {
+				result_.try_throw();
+			}
 
-		template <bool Ownership>
-		struct promise_result_base<void, Ownership> : public promise_fork_base<Ownership> {
-			using value_type = void;
-			using result_proxy = std::monostate;
-			using result_type = std::monostate;
-
-			using promise_callback_base::invoke_callbacks;
-			using promise_callback_base::on_completed;
-
-			promise_result_base() = default;
-			virtual ~promise_result_base() = default;
-
-			void invoke_result_or_error_callback() {
-				if (error_callback_) {
-					std::function<void(std::exception_ptr)> result_cb;
-					{
-						std::lock_guard<std::mutex> guard(this->mtx_);
-						std::swap(result_cb, error_callback_);
-					}
-					if (result_cb) {
-						result_cb(error_);
-					}
+			template <typename Func>
+			void emplace_or_invoke_callback(Func&& func) {
+				std::atomic<status>& st = this->get_status();
+				if (!(st == running || st == suspending)) {
+					func(this->result_);
+					return;
+				}
+				std::unique_lock<std::mutex> lock(this->mtx_);
+				auto new_st = st.load(std::memory_order_acquire);
+				if (!(new_st == running || new_st == suspending)) {
+					lock.unlock();
+					func(this->result_);
+				}
+				else {
+					callbacks_.emplace_back(std::forward<Func>(func));
 				}
 			}
 
 			template <typename Func>
-			void on_completed_with_error(Func&& func) {
-				if (this->status_.load(std::memory_order_acquire) == completed) {
-					func(error_);
-					return;
+			void then(Func&& func) {
+				emplace_or_invoke_callback(
+					[func = std::forward<Func>(func)](const result_proxy& res) {
+						func();
+					});
+			}
+
+			template <typename Func>
+			void on_value(Func&& func) {
+				emplace_or_invoke_callback(
+					[func = std::forward<Func>(func)](const result_proxy& res) {
+						if (res.st_.load(std::memory_order_acquire) == completed) {
+							func(res.value());
+						}
+					});
+			}
+
+			template <typename Func>
+			void on_error(Func&& func) {
+				emplace_or_invoke_callback(
+					[func = std::forward<Func>(func)](const result_proxy& res) {
+						if (res.st_.load(std::memory_order_acquire) == failed) {
+							func(res.error());
+							const_cast<result_proxy&>(res).st_.store(handled, std::memory_order_release);
+						}
+					});
+			}
+
+			template <typename Func>
+			void on_cancel(Func&& func) {
+				emplace_or_invoke_callback(
+					[func = std::forward<Func>(func)](const result_proxy& res) {
+						if (res.st_.load(std::memory_order_acquire) == cancelled) {
+							func();
+							const_cast<result_proxy&>(res).st_.store(handled, std::memory_order_release);
+						}
+					});
+			}
+
+			void invoke_callbacks() {
+				std::vector<callback_type> cbs;
+				{
+					std::lock_guard<std::mutex> guard(this->mtx_);
+					cbs.swap(callbacks_);
 				}
-				std::unique_lock<std::mutex> lock(this->mtx_);
-				if (this->status_.load(std::memory_order_acquire) == completed) {
-					lock.unlock();
-					func(error_);
-				}
-				else {
-					error_callback_ = std::forward<Func>(func);
+				for (auto& cb : cbs) {
+					cb(this->result_);
 				}
 			}
 
+			result_proxy result_;
+			std::vector<std::function<void(const result_proxy&)>> callbacks_;
+		};
+
+		template <bool Ownership>
+		struct promise_result_base<void, Ownership> : public promise_fork_base<Ownership> {
+			using fork_base = promise_fork_base<Ownership>;
+			using result_proxy = result<void>;
+			using value_type = typename result_proxy::value_type;
+			using result_type = std::monostate;
+			using callback_type = std::function<void(const result_proxy&)>;
+
+			promise_result_base() : result_(this->st_) {}
+			~promise_result_base() = default;
+
 			void unhandled_exception() {
-				error_ = std::current_exception();
-				this->status_ = failed;
+				result_.emplace_error(std::current_exception());
 			}
 
 			void return_void() {
-				this->status_ = completed;
+				result_.emplace_void();
 			}
 
-			void cancel(const cancel_exception<Ownership>& cancel_msg) {
-				error_ = std::make_exception_ptr(cancel_msg);
-				this->status_ = cancelled;
+			void cancel() {
+				result_.emplace_cancel(cancel_exception(Ownership));
 				this->stop_source_.request_stop();
 			}
 
 			void get_result() {
-				try_throw();
+				return result_.try_throw();
 			}
 
+			std::atomic<status>& get_status() {
+				return result_.get_status();
+			}
 
 			void try_throw() {
-				if (error_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-					std::rethrow_exception(error_);
+				result_.try_throw();
+			}
+
+			template <typename Func>
+			void emplace_or_invoke_callback(Func&& func) {
+				std::atomic<status>& st = this->get_status();
+				if (!(st == running || st == suspending)) {
+					func(this->result_);
+					return;
+				}
+				std::unique_lock<std::mutex> lock(this->mtx_);
+				auto new_st = st.load(std::memory_order_acquire);
+				if (!(new_st == running || new_st == suspending)) {
+					lock.unlock();
+					func(this->result_);
+				}
+				else {
+					callbacks_.emplace_back(std::forward<Func>(func));
 				}
 			}
 
-			std::exception_ptr					    error_;
-			std::function<void(std::exception_ptr)> error_callback_;
+			template <typename Func>
+			void then(Func&& func) {
+				emplace_or_invoke_callback(
+					[func = std::forward<Func>(func)](const result_proxy& res) {
+						func();
+					});
+			}
+
+			template <typename Func>
+			void on_void(Func&& func) {
+				emplace_or_invoke_callback(
+					[func = std::forward<Func>(func)](const result_proxy& res) {
+						if (res.st_.load(std::memory_order_acquire) == completed) {
+							func();
+						}
+					});
+			}
+
+			template <typename Func>
+			void on_error(Func&& func) {
+				emplace_or_invoke_callback(
+					[func = std::forward<Func>(func)](const result_proxy& res) {
+						if (res.st_.load(std::memory_order_acquire) == failed) {
+							func(res.error());
+							const_cast<result_proxy&>(res).st_.store(handled, std::memory_order_release);
+						}
+					});
+			}
+
+			template <typename Func>
+			void on_cancel(Func&& func) {
+				emplace_or_invoke_callback(
+					[func = std::forward<Func>(func)](const result_proxy& res) {
+						if (res.st_.load(std::memory_order_acquire) == cancelled) {
+							func();
+							const_cast<result_proxy&>(res).st_.store(handled, std::memory_order_release);
+						}
+					});
+			}
+
+			void invoke_callbacks() {
+				std::vector<callback_type> cbs;
+				{
+					std::lock_guard<std::mutex> guard(this->mtx_);
+					cbs.swap(callbacks_);
+				}
+				for (auto& cb : cbs) {
+					cb(this->result_);
+				}
+			}
+
+			result_proxy result_;
+			std::vector<std::function<void(const result_proxy&)>> callbacks_;
 		};
 
 		template <typename Ty>
@@ -296,7 +450,7 @@ namespace coflux {
 
 			void unhandled_exception() {
 				error_ = std::current_exception();
-				status_ = completed;
+				status_ = failed;
 			}
 
 			template <typename ...Args>
@@ -329,13 +483,13 @@ namespace coflux {
 		struct promise_base<Ty, Initial, Final, true, Ownership>
 			: public promise_result_base<Ty, Ownership> {
 			using result_base = promise_result_base<Ty, Ownership>;
-			using fork_base = promise_fork_base<Ownership>;
+			using fork_base = typename result_base::fork_base;
 			using value_type = typename result_base::value_type;
 			using result_proxy = typename result_base::result_proxy;
 			using result_type = typename result_base::result_type;
 
 			promise_base() = default;
-			virtual ~promise_base() = default;
+			~promise_base() = default;
 
 			Initial initial_suspend() const noexcept { return {}; }
 			Final   final_suspend()   const noexcept { return {}; }
@@ -362,7 +516,7 @@ namespace coflux {
 		using base = detail::promise_base<Ty, Initial, Final, true, Ownership>;
 		using result_base = typename base::result_base;
 		using fork_base = typename base::fork_base;
-		using value_typ = typename base::value_type;
+		using value_type = typename base::value_type;
 		using result_proxy = typename base::result_proxy;
 		using result_type = typename base::result_type;
 		using task_type = detail::basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>;
@@ -377,7 +531,6 @@ namespace coflux {
 			: memo_(env.memo_)
 			, scheduler_(env.scheduler_)
 			, executor_(&scheduler_.template get<Executor>()) {
-			this->status_ = running;
 		}
 		template <bool ParentOwnership, typename ...Args>
 			requires (!Ownership)
@@ -386,7 +539,6 @@ namespace coflux {
 			, scheduler_(env.parent_scheduler_)
 			, executor_(&scheduler_.template get<Executor>()) {
 			env.parent_promise_->fork_child(std::coroutine_handle<detail::promise_fork_base<Ownership>>::from_promise(*this));
-			this->status_ = running;
 		}
 		template <typename Functor, typename ...Args>
 			requires Ownership
@@ -398,7 +550,7 @@ namespace coflux {
 		promise(Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...args)
 			: promise(env, std::forward<Args>(args)...) {
 		}
-		~promise() override = default;
+		~promise() = default;
 
 
 		static void* allocate(std::pmr::memory_resource* memo, std::size_t size) {
@@ -512,65 +664,65 @@ namespace coflux {
 			requires std::is_base_of_v<detail::maysuspend_awaiter_base, std::remove_reference_t<Awaiter>>
 		&& std::is_base_of_v<detail::ownership_tag<Ownership>, std::remove_reference_t<Awaiter>>
 			decltype(auto) await_transform(Awaiter&& awaiter) {
-			awaiter.set_waiter_status_ptr(&(this->status_));
+			awaiter.set_waiter_status_ptr(&(this->get_status()));
 			return std::forward<Awaiter>(awaiter);
 		}
 
 		template <task_rvalue Task>
 		auto await_transform(Task&& co_task) {
-			return awaiter<Task, executor_type>(std::move(co_task), executor_, &(this->status_));
+			return awaiter<Task, executor_type>(std::move(co_task), executor_, &(this->get_status()));
 		}
 
 		template <fork_lrvalue Fork>
 		auto await_transform(Fork&& co_fork) {
-			return awaiter<Fork, executor_type>(std::forward<Fork>(co_fork), executor_, &(this->status_));
+			return awaiter<Fork, executor_type>(std::forward<Fork>(co_fork), executor_, &(this->get_status()));
 		}
 
 		template <fork_lrvalue ...Forks>
 		auto await_transform(detail::when_any_pair<Forks...>&& when_any) {
 			return awaiter<detail::when_any_pair<Forks...>, executor_type>(
-				std::move(when_any.second), executor_, &(this->status_));
+				std::move(when_any.second), executor_, &(this->get_status()));
 		}
 
 		template <task_like ...TaskLikes>
 		auto await_transform(detail::when_all_pair<TaskLikes...>&& when_all) {
 			return awaiter<detail::when_all_pair<TaskLikes...>, executor_type>(
-				std::move(when_all.second), executor_, &(this->status_));
+				std::move(when_all.second), executor_, &(this->get_status()));
 		}
 
 		template <typename Rep, typename Period>
 		auto await_transform(std::chrono::duration<Rep, Period>&& sleep_time) {
 			return detail::sleep_awaiter<executor_type>(executor_,
-				std::chrono::duration_cast<std::chrono::milliseconds>(sleep_time), &(this->status_));
+				std::chrono::duration_cast<std::chrono::milliseconds>(sleep_time), &(this->get_status()));
 		}
 
-		auto await_transform(cancel_exception<Ownership>&& cancel_msg) {
-			result_base::cancel(cancel_msg);
+		auto await_transform(detail::cancel_awaiter<Ownership>&& awaiter) {
+			result_base::cancel();
 			return detail::callback_awaiter{};
 		}
 
 		template <typename T, std::size_t N>
 		auto await_transform(std::pair<channel<T[N]>*, const T&>&& write_pair) {
 			return detail::channel_write_awaiter<channel<T[N]>, executor_type>(
-				write_pair.first, write_pair.second, executor_, &(this->status_));
+				write_pair.first, write_pair.second, executor_, &(this->get_status()));
 		}
 
 		template <typename T, std::size_t N>
 		auto await_transform(std::pair<channel<T[N]>*, T&>&& read_pair) {
 			return detail::channel_read_awaiter<channel<T[N]>, executor_type>(
-				read_pair.first, read_pair.second, executor_, &(this->status_));
+				read_pair.first, read_pair.second, executor_, &(this->get_status()));
 		}
 
 		template <typename T>
 		auto await_transform(std::pair<channel<T[]>*, const T&>&& write_pair) {
 			return detail::channel_write_awaiter<channel<T[]>, executor_type>(
-				write_pair.first, write_pair.second, executor_, &(this->status_));
+				write_pair.first, write_pair.second, executor_, &(this->get_status()));
 		}
 
 		template <typename T>
 		auto await_transform(std::pair<channel<T[]>*, T&>&& read_pair) {
 			return detail::channel_read_awaiter<channel<T[]>, executor_type>(
-				read_pair.first, read_pair.second, executor_, &(this->status_));
+				read_pair.first, read_pair.second, executor_, &(this->get_status()));
 		}
 
 		std::pmr::memory_resource* memo_;

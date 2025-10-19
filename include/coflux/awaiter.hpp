@@ -177,7 +177,7 @@ namespace coflux {
             constexpr void await_suspend(std::coroutine_handle<Promise> handle) const noexcept {
                 auto& promise = handle.promise();
                 promise.invoke_callbacks();
-                promise.invoke_result_or_error_callback();
+                promise.final_semaphore_release();
             }
 
             constexpr void await_resume() const noexcept {}

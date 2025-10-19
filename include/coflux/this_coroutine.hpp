@@ -9,10 +9,9 @@
 #include "environment.hpp"
 
 namespace coflux {
-    template <bool Ownership>
     struct cancel_exception : public std::exception {
-        cancel_exception() {
-            if constexpr (Ownership) {
+        cancel_exception(bool Ownership) {
+            if (Ownership) {
                 msg_ = "The task has been cancelled.";
             }
             else {
@@ -196,6 +195,23 @@ namespace coflux {
             }
 
             std::stop_token token_;
+        };
+        
+        template <bool Ownership>
+        struct cancel_awaiter : public ownership_tag<Ownership> {
+            cancel_awaiter() {}
+            ~cancel_awaiter() = default;
+
+            cancel_awaiter(const cancel_awaiter&) = delete;
+            cancel_awaiter(cancel_awaiter&&) = default;
+            cancel_awaiter& operator=(const cancel_awaiter&) = delete;
+            cancel_awaiter& operator=(cancel_awaiter&&) = default;
+
+            bool await_ready() const noexcept { return false; }
+
+            void await_suspend(std::coroutine_handle<> handle) noexcept {}
+
+            void await_resume() const noexcept {}
         };
 
         template <bool Ownership>
@@ -382,7 +398,7 @@ namespace coflux {
             return detail::get_stop_token_awaiter<true>{};
         }
         inline auto cancel() noexcept {
-            return cancel_exception<true>{};
+            return detail::cancel_awaiter<true>{};
         }
 
         // fork operations
@@ -426,7 +442,7 @@ namespace coflux {
             return detail::get_stop_token_awaiter<false>{};
         }
         inline auto cancel() noexcept {
-            return cancel_exception<false>{};
+            return detail::cancel_awaiter<false>{};
         }
 
         // fork operations

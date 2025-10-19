@@ -40,11 +40,13 @@ namespace coflux {
         void await_suspend(std::coroutine_handle<Promise> handle) {
             continuation_.store(handle, std::memory_order_release);
             auto callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_]
-                <std::size_t I>(auto & fork_result, std::exception_ptr error_ptr) {
+                <std::size_t I>(const auto& const_fork_result) {
+                auto& fork_result = const_cast<std::remove_cvref_t<decltype(const_fork_result)>&>(const_fork_result);
                 std::size_t expected = -1;
                 if (result->first.compare_exchange_strong(expected, I, std::memory_order_acq_rel)) {
-                    if (error_ptr) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-                        error = error_ptr;
+                    if (fork_result.get_status().load(std::memory_order_acquire) != completed) 
+                        COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+                        error = fork_result.error_;
                     }
                     else {
                         result->second.template emplace<I>(std::forward<
@@ -62,11 +64,13 @@ namespace coflux {
             };
 
             auto void_callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_]
-                <std::size_t I>(std::exception_ptr error_ptr) {
+                <std::size_t I>(const auto& const_fork_result) {
+                auto& fork_result = const_cast<std::remove_cvref_t<decltype(const_fork_result)>&>(const_fork_result);
                 std::size_t expected = -1;
                 if (result->first.compare_exchange_strong(expected, I, std::memory_order_acq_rel)) {
-                    if (error_ptr) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-                        error = error_ptr;
+                    if (fork_result.get_status().load(std::memory_order_acquire) != completed) 
+                        COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+                        error = fork_result.error_;
                     }
                     else {
                         result->second.template emplace<I>();
@@ -92,13 +96,13 @@ namespace coflux {
                             stop_source.request_stop();
                         });
                     if constexpr (std::is_void_v<typename std::remove_reference_t<std::tuple_element_t<I, task_type>>::value_type>) {
-                        fork.then_with_error([cb = void_callback](auto&&...args) {
-                            cb.template operator() < I > (std::forward<decltype(args)>(args)...);
+                        fork.When_any_all_callback([cb = void_callback](const auto& res) {
+                            cb.template operator() < I > (std::forward<decltype(res)>(res));
                             });
                     }
                     else {
-                        fork.then_with_result_or_error([cb = callback](auto&&...args) {
-                            cb.template operator() < I > (std::forward<decltype(args)>(args)...);
+                        fork.When_any_all_callback([cb = callback](const auto& res) {
+                            cb.template operator() < I > (std::forward<decltype(res)>(res));
                             });
                     }
                 };
@@ -169,11 +173,13 @@ namespace coflux {
         void await_suspend(std::coroutine_handle<Promise> handle) {
             continuation_.store(handle, std::memory_order_release);
             auto callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
-                <std::size_t I>(auto & basic_task_result, std::exception_ptr error_ptr) {
-                if (error_ptr) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+                <std::size_t I>(const auto & const_basic_task_result) {
+                auto& basic_task_result = const_cast<std::remove_cvref_t<decltype(const_basic_task_result)>&>(const_basic_task_result);
+                if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
+                    COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     std::lock_guard<std::mutex> lock(mtx);
                     if (!error) {
-                        error = error_ptr;
+                        error = basic_task_result.error_;
                         stop.request_stop();
                     }
                 }
@@ -193,11 +199,13 @@ namespace coflux {
             };
 
             auto void_callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
-                <std::size_t I>(std::exception_ptr error_ptr) {
-                if (error_ptr) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+                <std::size_t I>(const auto & const_basic_task_result) {
+                auto& basic_task_result = const_cast<std::remove_cvref_t<decltype(const_basic_task_result)>&>(const_basic_task_result);
+                if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
+                    COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     std::lock_guard<std::mutex> lock(mtx);
                     if (!error) {
-                        error = error_ptr;
+                        error = basic_task_result.error_;
                         stop.request_stop();
                     }
                 }
@@ -225,13 +233,13 @@ namespace coflux {
                             stop_source.request_stop();
                         });
                     if constexpr (std::is_void_v<typename std::remove_reference_t<std::tuple_element_t<I, task_type>>::value_type>) {
-                        basic_task.then_with_error([cb = void_callback](auto&&...args) {
-                            cb.template operator() < I > (std::forward<decltype(args)>(args)...);
+                        basic_task.When_any_all_callback([cb = void_callback](const auto& res) {
+                            cb.template operator() < I > (std::forward<decltype(res)>(res));
                             });
                     }
                     else {
-                        basic_task.then_with_result_or_error([cb = callback](auto&&...args) {
-                            cb.template operator() < I > (std::forward<decltype(args)>(args)...);
+                        basic_task.When_any_all_callback([cb = callback](const auto& res) {
+                            cb.template operator() < I > (std::forward<decltype(res)>(res));
                             });
                     }
                 };

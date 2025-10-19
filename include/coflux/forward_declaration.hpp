@@ -50,12 +50,13 @@
 #define COFLUX_UNDER_CONSTRUCTION 0
 
 namespace coflux {
-	enum status {
+	enum status : char {
 		running,
 		suspending,
 		completed,
 		failed,
 		cancelled,
+		handled,
 		invalid
 	};
 
@@ -210,7 +211,6 @@ namespace coflux {
 	template <typename Ty>
 	class fork_view;
 
-	template <bool Ownership>
 	struct cancel_exception;
 
 	template <typename Ty>
@@ -277,9 +277,20 @@ namespace coflux {
 #undef COFLUX_EXECUTABLE_CONCEPTS
 
 	namespace detail {
-		struct promise_callback_base;
 		template <bool Ownership>
 		struct promise_fork_base;
+
+		template <typename Ty, bool Ownership>
+		struct promise_result_base;
+
+		template <typename Ty, bool Ownership>
+		struct promise_callback_base;
+
+		template <typename Ty>
+		struct promise_yield_base;
+
+		template <typename Ty, simple_awaitable Initial, simple_awaitable Final, bool TaskLikePromise, bool Ownership>
+		struct promise_base;
 	}
 }
 

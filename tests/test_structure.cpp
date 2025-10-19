@@ -85,3 +85,31 @@ TEST(StructureTest, TaskForkRecursion) {
 
     EXPECT_EQ(cnt.load(), 5);
 }
+
+TEST(StructureTest, CancellationIsPropagated) {
+    std::atomic<bool> fork_was_cancelled = false;
+    auto env = coflux::make_environment(TestScheduler{});
+
+    auto cancellable_fork = [&](auto&& env, std::atomic<bool>& was_cancelled) -> coflux::fork<void, TestExecutor> {
+        auto token = co_await coflux::this_fork::get_stop_token();
+        // 模拟一个长时工作
+        co_await std::chrono::milliseconds(200);
+        if (token.stop_requested()) {
+            was_cancelled.store(true);
+        }
+        };
+
+    auto parent_task = [&](auto&& env) -> coflux::task<int, TestExecutor, TestScheduler> {
+        // 启动子fork
+        cancellable_fork(co_await coflux::this_task::environment(), fork_was_cancelled);
+        // 在子fork完成前，主动取消自己
+        co_await std::chrono::milliseconds(50);
+        co_await coflux::this_task::cancel();
+        co_return 1; // 不可达
+        }(env);
+
+    EXPECT_NO_THROW(parent_task.join()); // join被取消的协程不会抛处取消异常
+    EXPECT_THROW(parent_task.get_result(), coflux::cancel_exception); // get_result被取消的协程会抛出取消异常
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    EXPECT_TRUE(fork_was_cancelled.load());
+}
