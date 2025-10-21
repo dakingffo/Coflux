@@ -4,7 +4,7 @@
 
 A newcomer learns about C++20 coroutines and decides to wrap a task to represent the coroutine.
 
-Being clever, they utilize two design principles: RAII and rvalue semantics. So they design the following code:
+Being clever, he utilizes two design principles: RAII and rvalue semantics. So he designs the following code:
 `vector<int> a = co_await std::move(b)`
 
 The intent is: get the result of task `b` as an rvalue, then destroy `b`. Internally to `co_await`, `b` is moved into an awaiter. `b` will be destructed when the coroutine resumes. Unequivocally, `await_suspend` registers a callback for `b` to resume `a`.
@@ -241,9 +241,9 @@ Accepts no values. `this_task`/`this_fork` is determined by the parent environme
 
 All `task`/`fork`s are constructed onto the space provided by the `std::pmr::memory_resource*`, which opens up possibilities for more advanced memory control.
 
-## Static Ditches
+## Static Channels
 
-"Structured Concurrency" and "Task as Context" together derive the Coflux design philosophy: "**Static Ditches**." Coflux aims to describe a static ownership system at compile time, so that once execution begins, everything happens orderly and immediately. This is why:
+"Structured Concurrency" and "Task as Context" together derive the Coflux design philosophy: "**Static Channels**." Coflux aims to describe a static ownership system at compile time, so that once execution begins, everything happens orderly and immediately. This is why:
 
 1.  Executor and scheduler are expressed as template parameters.
 2.  All work is hot-started (`std::suspend_never`).

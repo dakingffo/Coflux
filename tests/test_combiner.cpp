@@ -146,7 +146,7 @@ TEST(CombinerTest, RangeWhen_NLessThanSize) {
         tasks.push_back(delayed_value(e, 4, 100ms)); // Medium
 
         // Wait for the first 2 to complete
-        co_return co_await(tasks | coflux::when(2));
+        co_return co_await coflux::when(tasks, 2);
         }(env);
 
     auto results = test_task.get_result();
