@@ -29,13 +29,13 @@ namespace coflux {
     namespace detail {
         template <bool Ownership, typename Promise = void>
         struct get_handle_awaiter : public nonsuspend_awaiter_base, public ownership_tag<Ownership> {
-            get_handle_awaiter() = default;
+            get_handle_awaiter()  = default;
             ~get_handle_awaiter() = default;
 
-            get_handle_awaiter(const get_handle_awaiter&) = delete;
-            get_handle_awaiter(get_handle_awaiter&&) = default;
+            get_handle_awaiter(const get_handle_awaiter&)            = delete;
+            get_handle_awaiter(get_handle_awaiter&&)                 = default;
             get_handle_awaiter& operator=(const get_handle_awaiter&) = delete;
-            get_handle_awaiter& operator=(get_handle_awaiter&&) = default;
+            get_handle_awaiter& operator=(get_handle_awaiter&&)      = default;
 
             bool await_ready() const noexcept {
                 return false;
@@ -85,8 +85,8 @@ namespace coflux {
         */
         template <bool Ownership, executive Executor, typename Suspend = std::suspend_never>
         struct dispatch_awaiter : public Suspend, public maysuspend_awaiter_base, public ownership_tag<Ownership> {
-            using executor_traits = coflux::executor_traits<Executor>;
-            using executor_type = typename executor_traits::executor_type;
+            using executor_traits  = coflux::executor_traits<Executor>;
+            using executor_type    = typename executor_traits::executor_type;
             using executor_pointer = typename executor_traits::executor_pointer;
 
             explicit dispatch_awaiter(executor_pointer exec)
@@ -97,10 +97,10 @@ namespace coflux {
             }
             ~dispatch_awaiter() = default;
 
-            dispatch_awaiter(const dispatch_awaiter&) = delete;
-            dispatch_awaiter(dispatch_awaiter&&) = default;
+            dispatch_awaiter(const dispatch_awaiter&)            = delete;
+            dispatch_awaiter(dispatch_awaiter&&)                 = default;
             dispatch_awaiter& operator=(const dispatch_awaiter&) = delete;
-            dispatch_awaiter& operator=(dispatch_awaiter&&) = default;
+            dispatch_awaiter& operator=(dispatch_awaiter&&)      = default;
 
             bool await_ready() const noexcept {
                 return false;
@@ -132,19 +132,18 @@ namespace coflux {
 
         template <executive Executor>
         struct sleep_awaiter : public maysuspend_awaiter_base {
-            using executor_traits = coflux::executor_traits<Executor>;
-            using executor_type = typename executor_traits::executor_type;
+            using executor_traits  = coflux::executor_traits<Executor>;
+            using executor_type    = typename executor_traits::executor_type;
             using executor_pointer = typename executor_traits::executor_pointer;
 
             sleep_awaiter(executor_pointer exec, std::chrono::milliseconds timer, std::atomic<status>* p)
-                : executor_(exec), timer_(timer), maysuspend_awaiter_base{ p } {
-            };
+                : executor_(exec), timer_(timer), maysuspend_awaiter_base{ p } {}
             ~sleep_awaiter() = default;
 
-            sleep_awaiter(const sleep_awaiter&) = delete;
-            sleep_awaiter(sleep_awaiter&&) = default;
+            sleep_awaiter(const sleep_awaiter&)            = delete;
+            sleep_awaiter(sleep_awaiter&&)                 = default;
             sleep_awaiter& operator=(const sleep_awaiter&) = delete;
-            sleep_awaiter& operator=(sleep_awaiter&&) = default;
+            sleep_awaiter& operator=(sleep_awaiter&&)      = default;
 
             bool await_ready() const noexcept {
                 return false;
@@ -175,10 +174,10 @@ namespace coflux {
             get_stop_token_awaiter() = default;
             ~get_stop_token_awaiter() = default;
 
-            get_stop_token_awaiter(const get_stop_token_awaiter&) = delete;
-            get_stop_token_awaiter(get_stop_token_awaiter&&) = default;
+            get_stop_token_awaiter(const get_stop_token_awaiter&)            = delete;
+            get_stop_token_awaiter(get_stop_token_awaiter&&)                 = default;
             get_stop_token_awaiter& operator=(const get_stop_token_awaiter&) = delete;
-            get_stop_token_awaiter& operator=(get_stop_token_awaiter&&) = default;
+            get_stop_token_awaiter& operator=(get_stop_token_awaiter&&)      = default;
 
             bool await_ready() const noexcept {
                 return false;
@@ -199,13 +198,13 @@ namespace coflux {
         
         template <bool Ownership>
         struct cancel_awaiter : public ownership_tag<Ownership> {
-            cancel_awaiter() {}
+            cancel_awaiter()  = default;
             ~cancel_awaiter() = default;
 
-            cancel_awaiter(const cancel_awaiter&) = delete;
-            cancel_awaiter(cancel_awaiter&&) = default;
+            cancel_awaiter(const cancel_awaiter&)            = delete;
+            cancel_awaiter(cancel_awaiter&&)                 = default;
             cancel_awaiter& operator=(const cancel_awaiter&) = delete;
-            cancel_awaiter& operator=(cancel_awaiter&&) = default;
+            cancel_awaiter& operator=(cancel_awaiter&&)      = default;
 
             bool await_ready() const noexcept { return false; }
 
@@ -216,13 +215,13 @@ namespace coflux {
 
         template <bool Ownership>
         struct destroy_forks_awaiter : public nonsuspend_awaiter_base, public ownership_tag<Ownership> {
-            destroy_forks_awaiter() = default;
+            destroy_forks_awaiter()  = default;
             ~destroy_forks_awaiter() = default;
 
-            destroy_forks_awaiter(const destroy_forks_awaiter&) = delete;
-            destroy_forks_awaiter(destroy_forks_awaiter&&) = default;
+            destroy_forks_awaiter(const destroy_forks_awaiter&)            = delete;
+            destroy_forks_awaiter(destroy_forks_awaiter&&)                 = default;
             destroy_forks_awaiter& operator=(const destroy_forks_awaiter&) = delete;
-            destroy_forks_awaiter& operator=(destroy_forks_awaiter&&) = default;
+            destroy_forks_awaiter& operator=(destroy_forks_awaiter&&)      = default;
 
             bool await_ready() const noexcept {
                 return false;
@@ -239,13 +238,13 @@ namespace coflux {
 
         template <bool Ownership, typename Scheduler = scheduler<void>>
         struct get_scheduler_awaiter : public nonsuspend_awaiter_base, public ownership_tag<Ownership> {
-            get_scheduler_awaiter() = default;
+            get_scheduler_awaiter()  = default;
             ~get_scheduler_awaiter() = default;
 
-            get_scheduler_awaiter(const get_scheduler_awaiter&) = delete;
-            get_scheduler_awaiter(get_scheduler_awaiter&&) = default;
+            get_scheduler_awaiter(const get_scheduler_awaiter&)            = delete;
+            get_scheduler_awaiter(get_scheduler_awaiter&&)                 = default;
             get_scheduler_awaiter& operator=(const get_scheduler_awaiter&) = delete;
-            get_scheduler_awaiter& operator=(get_scheduler_awaiter&&) = default;
+            get_scheduler_awaiter& operator=(get_scheduler_awaiter&&)      = default;
 
             bool await_ready() const noexcept {
                 return false;
@@ -266,13 +265,13 @@ namespace coflux {
 
         template <bool Ownership>
         struct environment_awaiter : public nonsuspend_awaiter_base, ownership_tag<Ownership> {
-            environment_awaiter() {}
+            environment_awaiter()  = default;
             ~environment_awaiter() = default;
 
-            environment_awaiter(const environment_awaiter&) = delete;
-            environment_awaiter(environment_awaiter&&) = default;
+            environment_awaiter(const environment_awaiter&)            = delete;
+            environment_awaiter(environment_awaiter&&)                 = default;
             environment_awaiter& operator=(const environment_awaiter&) = delete;
-            environment_awaiter& operator=(environment_awaiter&&) = default;
+            environment_awaiter& operator=(environment_awaiter&&)      = default;
 
             bool await_ready() const noexcept {
                 return false;
@@ -300,13 +299,13 @@ namespace coflux {
         namespace debug {
             template <bool Ownership>
             struct get_id_awaiter : public nonsuspend_awaiter_base {
-                get_id_awaiter() = default;
+                get_id_awaiter()  = default;
                 ~get_id_awaiter() = default;
 
-                get_id_awaiter(const get_id_awaiter&) = delete;
-                get_id_awaiter(get_id_awaiter&&) = default;
+                get_id_awaiter(const get_id_awaiter&)            = delete;
+                get_id_awaiter(get_id_awaiter&&)                 = default;
                 get_id_awaiter& operator=(const get_id_awaiter&) = delete;
-                get_id_awaiter& operator=(get_id_awaiter&&) = default;
+                get_id_awaiter& operator=(get_id_awaiter&&)      = default;
 
                 bool await_ready() const noexcept {
                     return !COFLUX_DEBUG;
@@ -339,13 +338,13 @@ namespace coflux {
 
             template <bool Ownership>
             struct get_forks_counter_awaiter : public nonsuspend_awaiter_base {
-                get_forks_counter_awaiter() = default;
+                get_forks_counter_awaiter()  = default;
                 ~get_forks_counter_awaiter() = default;
 
-                get_forks_counter_awaiter(const get_forks_counter_awaiter&) = delete;
-                get_forks_counter_awaiter(get_forks_counter_awaiter&&) = default;
+                get_forks_counter_awaiter(const get_forks_counter_awaiter&)            = delete;
+                get_forks_counter_awaiter(get_forks_counter_awaiter&&)                 = default;
                 get_forks_counter_awaiter& operator=(const get_forks_counter_awaiter&) = delete;
-                get_forks_counter_awaiter& operator=(get_forks_counter_awaiter&&) = default;
+                get_forks_counter_awaiter& operator=(get_forks_counter_awaiter&&)      = default;
 
                 bool await_ready() const noexcept {
                     return !COFLUX_DEBUG;

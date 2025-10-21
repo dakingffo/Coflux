@@ -18,7 +18,7 @@ namespace coflux {
 			channel_awaiter_proxy() : awaiter_ptr_(nullptr), resume_func_(nullptr) {}
 			~channel_awaiter_proxy() = default;
 
-			channel_awaiter_proxy(const channel_awaiter_proxy&) = delete;
+			channel_awaiter_proxy(const channel_awaiter_proxy&)            = delete;
 			channel_awaiter_proxy& operator=(const channel_awaiter_proxy&) = delete;
 
 			channel_awaiter_proxy(channel_awaiter_proxy&& another) noexcept
@@ -66,8 +66,8 @@ namespace coflux {
 
 		template <typename Channel>
 		struct channel_writer {
-			using proxy_type = channel_awaiter_proxy;
-			using value_type = typename Channel::value_type;
+			using proxy_type  = channel_awaiter_proxy;
+			using value_type  = typename Channel::value_type;
 			using channel_ptr = Channel*;
 
 			channel_writer(channel_ptr channel, const value_type& value)
@@ -89,11 +89,11 @@ namespace coflux {
 
 		template <typename Channel, executive Executor>
 		struct channel_write_awaiter : public channel_writer<Channel>, public maysuspend_awaiter_base {
-			using base = channel_writer<Channel>;
-			using value_type = typename base::value_type;
-			using channel_ptr = typename base::channel_ptr;
-			using executor_traits = executor_traits<Executor>;
-			using executor_type = typename executor_traits::executor_type;
+			using base			   = channel_writer<Channel>;
+			using value_type       = typename base::value_type;
+			using channel_ptr	   = typename base::channel_ptr;
+			using executor_traits  = executor_traits<Executor>;
+			using executor_type    = typename executor_traits::executor_type;
 			using executor_pointer = typename executor_traits::executor_pointer;
 
 			channel_write_awaiter(channel_ptr channel, const value_type& value, executor_pointer exec, std::atomic<status>* p)
@@ -101,10 +101,10 @@ namespace coflux {
 			}
 			~channel_write_awaiter() = default;
 
-			channel_write_awaiter(const channel_write_awaiter&) = delete;
-			channel_write_awaiter(channel_write_awaiter&&) = delete;
+			channel_write_awaiter(const channel_write_awaiter&)			   = delete;
+			channel_write_awaiter(channel_write_awaiter&&)			       = delete;
 			channel_write_awaiter& operator=(const channel_write_awaiter&) = delete;
-			channel_write_awaiter& operator=(channel_write_awaiter&&) = delete;
+			channel_write_awaiter& operator=(channel_write_awaiter&&)	   = delete;
 
 			bool await_ready() {
 				return false;
@@ -131,8 +131,8 @@ namespace coflux {
 
 		template <typename Channel>
 		struct channel_reader {
-			using proxy_type = channel_awaiter_proxy;
-			using value_type = typename Channel::value_type;
+			using proxy_type  = channel_awaiter_proxy;
+			using value_type  = typename Channel::value_type;
 			using channel_ptr = Channel*;
 
 			channel_reader(channel_ptr channel, value_type& value)
@@ -149,17 +149,17 @@ namespace coflux {
 
 			bool					success_flag_;
 			channel_ptr				channel_;
-			value_type& value_;
+			value_type&				value_;
 			std::coroutine_handle<> handle_;
 		};
 
 		template <typename Channel, executive Executor>
 		struct channel_read_awaiter : public channel_reader<Channel>, public maysuspend_awaiter_base {
-			using base = channel_reader<Channel>;
-			using value_type = typename base::value_type;
-			using channel_ptr = typename base::channel_ptr;
-			using executor_traits = executor_traits<Executor>;
-			using executor_type = typename executor_traits::executor_type;
+			using base			   = channel_reader<Channel>;
+			using value_type       = typename base::value_type;
+			using channel_ptr      = typename base::channel_ptr;
+			using executor_traits  = executor_traits<Executor>;
+			using executor_type    = typename executor_traits::executor_type;
 			using executor_pointer = typename executor_traits::executor_pointer;
 
 			channel_read_awaiter(channel_ptr channel, value_type& value, executor_pointer exec, std::atomic<status>* p)
@@ -167,10 +167,10 @@ namespace coflux {
 			}
 			~channel_read_awaiter() = default;
 
-			channel_read_awaiter(const channel_read_awaiter&) = delete;
-			channel_read_awaiter(channel_read_awaiter&&) = delete;
+			channel_read_awaiter(const channel_read_awaiter&)		     = delete;
+			channel_read_awaiter(channel_read_awaiter&&)				 = delete;
 			channel_read_awaiter& operator=(const channel_read_awaiter&) = delete;
-			channel_read_awaiter& operator=(channel_read_awaiter&&) = delete;
+			channel_read_awaiter& operator=(channel_read_awaiter&&)      = delete;
 
 			bool await_ready() {
 				return false;
@@ -210,10 +210,10 @@ namespace coflux {
 			close();
 		}
 
-		channel(const channel&) = delete;
-		channel(channel&&) = delete;
+		channel(const channel&)			   = delete;
+		channel(channel&&)				   = delete;
 		channel& operator=(const channel&) = delete;
-		channel& operator=(channel&&) = delete;
+		channel& operator=(channel&&)      = delete;
 
 		bool active() const noexcept {
 			return active_.load(std::memory_order_acquire);

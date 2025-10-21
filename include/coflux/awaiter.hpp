@@ -190,11 +190,11 @@ namespace coflux {
     template <task_like TaskLike, executive Executor>
     struct awaiter<TaskLike, Executor> : public detail::maysuspend_awaiter_base {
     public:
-        using task_type = std::conditional_t<std::is_rvalue_reference_v<TaskLike>, std::remove_reference_t<TaskLike>, TaskLike>;
-        using value_type = typename std::remove_reference_t<task_type>::value_type;
-        using result_proxy = task_type;
-        using executor_traits = coflux::executor_traits<Executor>;
-        using executor_type = typename executor_traits::executor_type;
+        using task_type        = std::conditional_t<std::is_rvalue_reference_v<TaskLike>, std::remove_reference_t<TaskLike>, TaskLike>;
+        using value_type       = typename std::remove_reference_t<task_type>::value_type;
+        using result_proxy     = task_type;
+        using executor_traits  = coflux::executor_traits<Executor>;
+        using executor_type    = typename executor_traits::executor_type;
         using executor_pointer = typename executor_traits::executor_pointer;
 
     public:
@@ -205,10 +205,10 @@ namespace coflux {
         }
         ~awaiter() {};
 
-        awaiter(const awaiter&) = delete;
-        awaiter(awaiter&&) = default;
+        awaiter(const awaiter&)            = delete;
+        awaiter(awaiter&&)                 = default;
         awaiter& operator=(const awaiter&) = delete;
-        awaiter& operator=(awaiter&&) = default;
+        awaiter& operator=(awaiter&&)      = default;
 
         bool await_ready() const noexcept {
             return task_.done();

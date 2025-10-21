@@ -48,6 +48,10 @@ coflux::generator<int> fibonacci(int n) {
     }
 }
 
+coflux::fork<int, task_executor> nums(auto&&, int i) {
+    co_return i * 2;
+}
+
 int main() {
 
     std::cout << R"(
@@ -119,6 +123,23 @@ int main() {
         std::cout << val << " ";
     }
     std::cout << "\n\n--- Generator Demo Finished ---\n";
+
+    // --- 3. 演示构造fork的range利用when将异步解析到同步作用域 ---
+    std::cout << "--- 3. Demonstrating A Task Range then using when(n) to parse Async operations into a Sync scope. ---\n";
+    {
+        auto env = coflux::make_environment(coflux::scheduler{ task_executor{3} });
+        auto print_nums = [](auto&)->coflux::task<int, task_executor> {
+            auto&& env = co_await coflux::this_task::environment();
+            std::vector<coflux::fork<int, task_executor>> vec;
+            for (int i = 0; i < 10; i++) {
+                vec.push_back(nums(env, i));
+            }
+            for (auto num : co_await(vec | coflux::when) | std::views::drop(2) | std::views::take(4)) {
+                std::cout << num << ' ';
+            }
+            }(env);
+    }
+    std::cout << "\n\n--- All Demo Finished ---\n";
 
     return 0;
 }

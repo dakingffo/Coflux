@@ -14,13 +14,13 @@ namespace coflux {
 		static_assert(std::is_object_v<Ty>, "concurrency_queue must be instantiated by the object type.");
 		static_assert(N > 0, "concurrency_queue size must be greater than zero.");
 
-		using container_type = Container;
-		using value_type = typename container_type::value_type;
-		using size_type = typename container_type::size_type;
-		using reference = typename container_type::reference;
+		using container_type  = Container;
+		using value_type      = typename container_type::value_type;
+		using size_type       = typename container_type::size_type;
+		using reference       = typename container_type::reference;
 		using const_reference = typename container_type::const_reference;
 
-		using allocator_type = std::conditional_t<has_allocator<Container>,
+		using allocator_type  = std::conditional_t<has_allocator<Container>,
 			typename container_type::allocator_type, std::allocator<value_type>>;
 
 	public:
@@ -29,10 +29,10 @@ namespace coflux {
 		}
 		~concurrency_queue() = default;
 
-		concurrency_queue(const concurrency_queue&) = delete;
-		concurrency_queue(concurrency_queue&&) = delete;
+		concurrency_queue(const concurrency_queue&)            = delete;
+		concurrency_queue(concurrency_queue&&)                 = delete;
 		concurrency_queue& operator=(const concurrency_queue&) = delete;
-		concurrency_queue& operator=(concurrency_queue&&) = delete;
+		concurrency_queue& operator=(concurrency_queue&&)      = delete;
 
 		reference front() {
 			std::lock_guard<std::mutex> guard(mtx_);
@@ -235,10 +235,10 @@ namespace coflux {
 
 	public:
 		explicit thread_pool(
-			std::size_t      basic_thread_size = std::thread::hardware_concurrency(),		//set basic thread size
-			mode             run_mode = mode::fixed,								//set mode
+			std::size_t      basic_thread_size     = std::thread::hardware_concurrency(),		//set basic thread size
+			mode             run_mode              = mode::fixed,								//set mode
 			std::size_t      thread_size_threshold = std::thread::hardware_concurrency() * 2,	//set thread size threshold(when cached)
-			const allocator_type& alloc = allocator_type())							//set allocator for task queue						
+			const allocator_type& alloc            = allocator_type())							//set allocator for task queue						
 			: basic_thread_size_(basic_thread_size)
 			, mode_(run_mode)
 			, thread_size_threshold_(thread_size_threshold)
@@ -249,10 +249,10 @@ namespace coflux {
 			shut_down();
 		};
 
-		thread_pool(const thread_pool&) = delete;
-		thread_pool(thread_pool&&) = delete;
+		thread_pool(const thread_pool&)			   = delete;
+		thread_pool(thread_pool&&)                 = delete;
 		thread_pool& operator=(const thread_pool&) = delete;
-		thread_pool& operator=(thread_pool&&) = delete;
+		thread_pool& operator=(thread_pool&&)      = delete;
 
 		void run() {
 			if (running_) {
@@ -433,10 +433,10 @@ namespace coflux {
 	};
 
 	struct timer_thread {
-		using clock = std::chrono::steady_clock;
+		using clock      = std::chrono::steady_clock;
 		using time_point = clock::time_point;
-		using duration = std::chrono::milliseconds;
-		using package = std::pair<time_point, std::function<void()>>;
+		using duration   = std::chrono::milliseconds;
+		using package    = std::pair<time_point, std::function<void()>>;
 
 		struct package_greater {
 			bool operator()(const package& a, const package& b) const {
@@ -452,10 +452,10 @@ namespace coflux {
 			shutdown();
 		}
 
-		timer_thread(const timer_thread&) = delete;
-		timer_thread(timer_thread&&) = delete;
+		timer_thread(const timer_thread&)            = delete;
+		timer_thread(timer_thread&&)                 = delete;
 		timer_thread& operator=(const timer_thread&) = delete;
-		timer_thread& operator=(timer_thread&&) = delete;
+		timer_thread& operator=(timer_thread&&)      = delete;
 
 		template <typename Func, typename... Args>
 		void submit(Func&& func, const duration& timer, Args&& ...args) {

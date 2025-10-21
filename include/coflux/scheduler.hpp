@@ -40,23 +40,21 @@ namespace coflux {
 		}
 
 		static constexpr vtable vtb_ = {
-			.get_arg_by_index = &get_arg_by_index,
+			.get_arg_by_index  = &get_arg_by_index,
 			.get_arg_by_typeid = &get_arg_by_typeid
 		};
 
-		scheduler(const scheduler&) = default;
-		scheduler(scheduler&&) = default;
+		scheduler(const scheduler&)            = default;
+		scheduler(scheduler&&)                 = default;
 		scheduler& operator=(const scheduler&) = default;
-		scheduler& operator=(scheduler&&) = default;
+		scheduler& operator=(scheduler&&)      = default;
 
 		template <typename ...Args>
 			requires (std::constructible_from<Executors, Args>&&...)
 		scheduler(Args&&... args)
-			: tp_(std::make_shared<std::tuple<Executors...>>(std::forward<Args>(args)...)) {
-		}
+			: tp_(std::make_shared<std::tuple<Executors...>>(std::forward<Args>(args)...)) {}
 		scheduler()
-			: tp_(std::make_shared<std::tuple<Executors...>>()) {
-		}
+			: tp_(std::make_shared<std::tuple<Executors...>>()) {}
 		~scheduler() = default;
 
 		template <certain_executor Idx>
@@ -86,10 +84,10 @@ namespace coflux {
 		}
 		~scheduler() = default;
 
-		scheduler(const scheduler&) = default;
-		scheduler(scheduler&&) = default;
+		scheduler(const scheduler&)			   = default;
+		scheduler(scheduler&&)                 = default;
 		scheduler& operator=(const scheduler&) = default;
-		scheduler& operator=(scheduler&&) = default;
+		scheduler& operator=(scheduler&&)      = default;
 
 		template <certain_executor Idx>
 		auto& get() {

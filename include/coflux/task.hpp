@@ -21,14 +21,14 @@ namespace coflux {
 		public:
 			static_assert(std::is_object_v<Ty> || std::is_void_v<Ty>, "basic_task must be instantiated by the object type or void.");
 
-			using promise_type = promise<basic_task>;
-			using value_type = typename promise_type::value_type;
-			using result_type = typename promise_type::result_type;
-			using executor_traits = typename promise_type::executor_traits;
-			using executor_type = typename promise_type::executor_type;
+			using promise_type     = promise<basic_task>;
+			using value_type       = typename promise_type::value_type;
+			using result_type      = typename promise_type::result_type;
+			using executor_traits  = typename promise_type::executor_traits;
+			using executor_type    = typename promise_type::executor_type;
 			using executor_pointer = typename promise_type::executor_pointer;
-			using scheduler_type = typename promise_type::scheduler_type;
-			using handle_type = std::coroutine_handle<promise_type>;
+			using scheduler_type   = typename promise_type::scheduler_type;
+			using handle_type      = std::coroutine_handle<promise_type>;
 
 		public:
 			explicit basic_task(handle_type handle = nullptr) noexcept : handle_(handle) {}
@@ -39,10 +39,11 @@ namespace coflux {
 				}
 			}
 
-			basic_task(const basic_task&) = delete;
+			basic_task(const basic_task&)			 = delete;
 			basic_task& operator=(const basic_task&) = delete;
 
-			basic_task(basic_task && another) noexcept : handle_(std::exchange(another.handle_, nullptr)) {}
+			basic_task(basic_task && another) noexcept 
+				: handle_(std::exchange(another.handle_, nullptr)) {}
 			basic_task& operator=(basic_task && another) noexcept {
 				if (this != &another) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 					if (handle_) {
@@ -258,7 +259,7 @@ namespace coflux {
 			}
 
 			template <typename Func>
-			void Replace_cancellation_callback(std::stop_token && token, Func && cb) {
+			void Replace_cancellation_callback(std::stop_token&& token, Func&& cb) {
 				handle_.promise().cancellation_callback_.emplace(std::move(token), std::move(cb));
 			}
 
@@ -287,17 +288,15 @@ namespace coflux {
 		static_assert(std::is_object_v<Ty> || std::is_void_v<Ty>, "fork_view must be instantiated by the object type or void.");
 
 		using promise_type = detail::promise_result_base<Ty, false>;
-		using value_type = typename promise_type::value_type;
-		using result_type = typename promise_type::result_type;
-		using handle_type = std::coroutine_handle<promise_type>;
+		using value_type   = typename promise_type::value_type;
+		using result_type  = typename promise_type::result_type;
+		using handle_type  = std::coroutine_handle<promise_type>;
 
 	public:
 		~fork_view() = default;
 
-		fork_view(const fork_view&) = default;
-		fork_view(fork_view&&) = default;
+		fork_view(const fork_view&)			   = default;
 		fork_view& operator=(const fork_view&) = default;
-		fork_view& operator=(fork_view&&) = default;
 
 		decltype(auto) get_result()& {
 			Nothrow_join();

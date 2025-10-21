@@ -15,20 +15,20 @@ namespace coflux {
 			, memo_(m)
 			, parent_scheduler_(sch) {
 		}
-		environment_info() = default;
+		environment_info()  = default;
 		~environment_info() = default;
 
 		environment_info(const environment_info&) = delete;
-		environment_info(environment_info&&) = delete;
+		environment_info(environment_info&&)      = delete;
 
 		environment_info& operator=(const environment_info&) = delete;
-		environment_info& operator=(environment_info&&) = delete;
+		environment_info& operator=(environment_info&&)      = delete;
 
 		template <bool Ownership>
 		friend struct detail::environment_awaiter;
 
 		detail::promise_fork_base<ParentOwnership>* parent_promise_ = nullptr;
-		std::pmr::memory_resource* memo_ = nullptr;
+		std::pmr::memory_resource*					memo_ = nullptr;
 		scheduler<void>						        parent_scheduler_{};
 	};
 
@@ -42,10 +42,10 @@ namespace coflux {
 		}
 		~environment() = default;
 
-		environment(const environment&) = default;
-		environment(environment&&) = default;
+		environment(const environment&)			   = default;
+		environment(environment&&)				   = default;
 		environment& operator=(const environment&) = default;
-		environment& operator=(environment&&) = default;
+		environment& operator=(environment&&)      = default;
 
 		std::pmr::memory_resource* memo_;
 		scheduler_type			   scheduler_;

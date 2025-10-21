@@ -35,25 +35,25 @@ namespace coflux {
 	template <std::size_t TaskQueueSize = 1024>
 	class thread_pool_executor {
 	public:
-		using thread_pool = coflux::thread_pool<concurrency_queue<std::function<void()>, TaskQueueSize>>;
-		using queue_type = typename thread_pool::queue_type;
+		using thread_pool    = coflux::thread_pool<concurrency_queue<std::function<void()>, TaskQueueSize>>;
+		using queue_type     = typename thread_pool::queue_type;
 		using container_type = typename queue_type::container_type;
 		using allocator_type = typename thread_pool::allocator_type;
 
 	public:
 		thread_pool_executor(
-			std::size_t		      basic_thread_size = std::thread::hardware_concurrency(),
-			mode                  run_mode = mode::fixed,
+			std::size_t		      basic_thread_size		= std::thread::hardware_concurrency(),
+			mode                  run_mode			    = mode::fixed,
 			std::size_t		      thread_size_threshold = std::thread::hardware_concurrency() * 2,
-			const allocator_type& alloc = allocator_type())
+			const allocator_type& alloc				    = allocator_type())
 			: pool_(std::make_unique<thread_pool>(
 				basic_thread_size, run_mode, thread_size_threshold, alloc)) {
 		}
 		~thread_pool_executor() = default;
 
-		thread_pool_executor(const thread_pool_executor&) = delete;
-		thread_pool_executor(thread_pool_executor&&) = default;
-		thread_pool_executor& operator=(const thread_pool_executor&) = delete;
+		thread_pool_executor(const thread_pool_executor&)				= delete;
+		thread_pool_executor(thread_pool_executor&&)				    = default;
+		thread_pool_executor& operator=(const thread_pool_executor&)    = delete;
 		thread_pool_executor& operator=(thread_pool_executor&& another) = default;
 
 		template <typename Func, typename... Args>
@@ -71,10 +71,10 @@ namespace coflux {
 
 	class timer_executor {
 	public:
-		using clock = typename timer_thread::clock;
+		using clock      = typename timer_thread::clock;
 		using time_point = typename timer_thread::time_point;
-		using duration = typename timer_thread::duration;
-		using package = typename timer_thread::package;
+		using duration   = typename timer_thread::duration;
+		using package    = typename timer_thread::package;
 
 	public:
 		timer_executor()
@@ -101,7 +101,7 @@ namespace coflux {
 
 	template <executive Executor>
 	struct executor_traits<Executor> {
-		using executor_type = Executor;
+		using executor_type    = Executor;
 		using executor_pointer = Executor*;
 
 		template <typename Func, typename...Args>
@@ -112,7 +112,7 @@ namespace coflux {
 
 	template <certain_executor Idx>
 	struct executor_traits<Idx> {
-		using executor_type = typename Idx::type;
+		using executor_type    = typename Idx::type;
 		using executor_pointer = typename Idx::type*;
 
 		template <typename Func, typename...Args>

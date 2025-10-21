@@ -13,19 +13,20 @@ namespace coflux {
 		using generator_type = Generator;
 
 		using iterator_category = std::input_iterator_tag;
-		using value_type = typename generator_type::value_type;
-		using difference_type = std::ptrdiff_t;
-		using pointer = value_type*;
-		using reference = value_type&&;
+		using value_type        = typename generator_type::value_type;
+		using difference_type   = std::ptrdiff_t;
+		using pointer           = value_type*;
+		using reference         = value_type&&;
 
-		generator_iterator(const generator_type* owner = nullptr) : owner_(const_cast<generator_type*>(owner)) {
+		generator_iterator(const generator_type* owner = nullptr) 
+			: owner_(const_cast<generator_type*>(owner)) {
 			if (owner_ && owner_->handle_ && !owner_->has_value()) {
 				owner_->next();
 			}
 		}
 		~generator_iterator() = default;
 
-		generator_iterator(const generator_iterator&) = default;
+		generator_iterator(const generator_iterator&)            = default;
 		generator_iterator& operator=(const generator_iterator&) = default;
 
 		generator_iterator(generator_iterator&& another) noexcept : owner_(std::exchange(another.owner_, nullptr)) {};
@@ -70,14 +71,15 @@ namespace coflux {
 	public:
 		static_assert(std::is_object_v<Ty>, "generator must be instantiated by the object type");
 
-		using promise_type = promise<generator<Ty>>;
-		using value_type = typename promise_type::value_type;
+		using promise_type     = promise<generator<Ty>>;
+		using value_type       = typename promise_type::value_type;
 		using coroutine_handle = std::coroutine_handle<promise_type>;
 
-		using iterator = generator_iterator<generator>;
+		using iterator         = generator_iterator<generator>;
 
 	public:
-		generator(coroutine_handle handle = nullptr) noexcept : handle_(handle) {}
+		generator(coroutine_handle handle = nullptr) noexcept 
+			: handle_(handle) {}
 		~generator() {
 			if (handle_ && handle_.promise().ptr_.active == &handle_.promise()) {
 				handle_.destroy();
@@ -85,7 +87,8 @@ namespace coflux {
 		}
 
 		generator(const generator&) = delete;
-		generator(generator && another) noexcept : handle_(std::exchange(another.handle_, nullptr)) {}
+		generator(generator && another) noexcept 
+			: handle_(std::exchange(another.handle_, nullptr)) {}
 
 		generator& operator=(const generator&) = delete;
 		generator& operator=(generator && other) noexcept {

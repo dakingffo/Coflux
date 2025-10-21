@@ -89,7 +89,7 @@ namespace coflux {
 			{ obj.await_resume() };
 	}
 	|| requires {operator co_await(obj); }
-	|| requires {obj.operator co_await(obj); };
+	|| requires {obj.operator co_await(); };
 	};
 
 	template <typename Ty>
@@ -202,6 +202,8 @@ namespace coflux {
 
 		struct when_all_tag {};
 
+		struct when_n_tag { std::size_t n_; };
+
 		struct limited_tag {};
 
 		template <bool Ownership>
@@ -266,12 +268,23 @@ namespace coflux {
 	template <typename TaskLike>
 	concept task_like = fork_lrvalue<TaskLike> || task_rvalue<TaskLike>;
 
+
+	template <typename ForkRange>
+	concept fork_range = requires(ForkRange r) {
+		std::ranges::forward_range<ForkRange> &&
+		std::is_reference_v<ForkRange> && 
+		is_fork_lrvalue_v<std::remove_cvref_t<decltype(*r.begin())>>;
+	};
+
 	namespace detail {
 		template <fork_lrvalue... Forks>
 		using when_any_pair = std::pair<when_any_tag, std::tuple<Forks...>>;
 
 		template <task_like... TaskLikes>
 		using when_all_pair = std::pair<when_all_tag, std::tuple<TaskLikes...>>;
+
+		template <typename Range>
+		using when_n_pair = std::pair<when_n_tag, Range>;
 	}
 
 #undef COFLUX_EXECUTABLE_CONCEPTS
