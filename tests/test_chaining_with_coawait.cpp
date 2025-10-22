@@ -8,7 +8,7 @@ using TestExecutor = coflux::thread_pool_executor<>;
 using TestScheduler = coflux::scheduler<TestExecutor>;
 
 // --- Helper Tasks/Forks ---
-coflux::fork<std::string, TestExecutor> success_fork(auto&& env) {
+coflux::fork<std::string, TestExecutor> success_fork(auto&&) {
     co_return "ForkSuccess";
 }
 
@@ -20,7 +20,7 @@ coflux::task<void, TestExecutor, TestScheduler> void_success_task(auto&& env) {
     co_return;
 }
 
-coflux::fork<void, TestExecutor> error_fork(auto&& env) {
+coflux::fork<void, TestExecutor> error_fork(auto&&) {
     throw std::runtime_error("ForkError");
     co_return;
 }

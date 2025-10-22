@@ -12,23 +12,23 @@ using TestScheduler = coflux::scheduler<TestExecutor, coflux::timer_executor>;
 using namespace std::chrono_literals;
 
 // --- Helper Forks ---
-coflux::fork<int, TestExecutor> delayed_value(auto&& env, int value, std::chrono::milliseconds delay) {
+coflux::fork<int, TestExecutor> delayed_value(auto&&, int value, std::chrono::milliseconds delay) {
     co_await delay;
     co_return value;
 }
 
-coflux::fork<void, TestExecutor> delayed_void(auto&& env, std::chrono::milliseconds delay) {
+coflux::fork<void, TestExecutor> delayed_void(auto&&, std::chrono::milliseconds delay) {
     co_await delay;
     co_return;
 }
 
-coflux::fork<int, TestExecutor> delayed_throw(auto&& env, std::chrono::milliseconds delay, const char* msg = "CombinerError") {
+coflux::fork<int, TestExecutor> delayed_throw(auto&&, std::chrono::milliseconds delay, const char* msg = "CombinerError") {
     co_await delay;
     throw std::runtime_error(msg);
     co_return -1; // Should not reach
 }
 
-coflux::fork<int, TestExecutor> delayed_cancel_check(auto&& env, std::chrono::milliseconds delay) {
+coflux::fork<int, TestExecutor> delayed_cancel_check(auto&&, std::chrono::milliseconds delay) {
     auto token = co_await coflux::this_fork::get_stop_token();
     co_await delay;
     if (token.stop_requested()) {

@@ -5,7 +5,7 @@
 #include <array>
 #include <iostream>
 
-coflux::fork<void, coflux::noop_executor> trivial_fork(auto&& env) {
+coflux::fork<void, coflux::noop_executor> trivial_fork(auto&&) {
     co_return;
 }
 
@@ -71,7 +71,6 @@ static void BM_PmrPool_ForkCreationAndDestruction(benchmark::State& state) {
 }
 
 BENCHMARK(BM_PmrPool_ForkCreationAndDestruction)
-//->Arg(100);
     ->Arg(100000)   
     ->Arg(500000)    
     ->Arg(1000000)  

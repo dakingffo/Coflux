@@ -33,39 +33,37 @@ The example below demonstrates how to define a root task (`server_task`) that sp
 #include <coflux/scheduler.hpp>
 #include <coflux/combiner.hpp>
 
+using std::chrono::milliseconds;
+
 using exec = coflux::thread_pool_executor<1024>;
+using sch  = coflux::scheduler<exec, coflux::timer_executor>;
 
 // Simulate asynchronous network request reading
 coflux::fork<std::string, exec> async_read_request(auto&&, int client_id) {
     std::cout << "[Client " << client_id << "] Waiting for request..." << std::endl;
-    co_await std::chrono::milliseconds(200 + client_id * 100);
+    co_await milliseconds(200 + client_id * 100);
     co_return "Hello from client " + std::to_string(client_id);
 }
 
 // Simulate asynchronous network response writing
 coflux::fork<void, exec> async_write_response(auto&&, const std::string& response) {
     std::cout << "  -> Echoing back: '" << response << "'" << std::endl;
-    co_await std::chrono::milliseconds((rand() % 5) * 100);
+    co_await milliseconds((rand() % 5) * 100);
     co_return;
 }
 
 // Handle a single connection using structured concurrency
 coflux::fork<void, exec> handle_connection(auto&&, int client_id) {
-    try {
-        auto&& env = co_await coflux::context();
-        auto request = co_await async_read_request(env, client_id);
-        auto processed_response = request + " [processed by server]";
-        co_await async_write_response(env, processed_response);
-        std::cout << "[Client " << client_id << "] Connection handled successfully." << std::endl;
-    }
-    catch (const std::exception& e) {
-        std::cerr << "[Client " << client_id << "] Error: " << e.what() << std::endl;
-    }
+    auto&& ctx   = co_await coflux::context();
+    auto request = co_await async_read_request(ctx, client_id);
+    auto processed_response = request + " [processed by server]";
+    co_await async_write_response(ctx, processed_response);
+
+    std::cout << "[Client " << client_id << "] Connection handled successfully." << std::endl;
     // When handle_connection finishes, all forks it created (read/write) are automatically cleaned up.
 }
 
 int main() {
-    using sch = coflux::scheduler<exec, coflux::timer_executor>;
     auto env = coflux::make_environment<sch>();
     auto server_task = [](auto& env) -> coflux::task<void, exec, sch> {
         std::cout << "Server task starting 3 concurrent connections...\n";

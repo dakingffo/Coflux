@@ -11,11 +11,11 @@ TEST(ChannelTest, UnbufferedSendReceive) {
     auto test_task = [](auto env) -> coflux::task<int, TestExecutor, TestScheduler> {
         coflux::channel<int[]> ch;
 
-        auto producer = [](auto&& env, auto& ch) -> coflux::fork<void, TestExecutor> {
+        auto producer = [](auto&&, auto& ch) -> coflux::fork<void, TestExecutor> {
             co_await(ch << 42);
             };
 
-        auto consumer = [](auto&& env, auto& ch) -> coflux::fork<int, TestExecutor> {
+        auto consumer = [](auto&&, auto& ch) -> coflux::fork<int, TestExecutor> {
             int val;
             co_await(ch >> val);
             co_return val;
@@ -37,7 +37,7 @@ TEST(ChannelTest, CloseUnblocksWaitingReader) {
     auto test_task = [](auto env) -> coflux::task<bool, TestExecutor, TestScheduler> {
         coflux::channel<int[1]> ch;
 
-        auto consumer = [](auto&& env, auto& ch) -> coflux::fork<bool, TestExecutor> {
+        auto consumer = [](auto&&, auto& ch) -> coflux::fork<bool, TestExecutor> {
             int val;
             // 当channel被关闭后，这个co_await应该返回false
             bool success = co_await(ch >> val);
@@ -47,7 +47,7 @@ TEST(ChannelTest, CloseUnblocksWaitingReader) {
         auto&& c_fork = consumer(co_await coflux::context(), ch);
 
         // 另起一个fork去关闭channel
-        [](auto&& env, auto& ch) -> coflux::fork<void, TestExecutor> {
+        [](auto&&, auto& ch) -> coflux::fork<void, TestExecutor> {
             co_await std::chrono::milliseconds(50);
             ch.close();
             }(co_await coflux::context(), ch);
