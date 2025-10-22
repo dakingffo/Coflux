@@ -13,7 +13,7 @@ Coflux is a modern concurrency framework built on C++20 coroutines.
 
 Coflux features a **Structured Concurrency** `task/fork` model and a "**Task-as-Context**" design philosophy. It aims to statically describe a safe and predictable concurrent system at **compile time**.
 
-"Structured Concurrency" and "Task-as-Context" together articulate the core philosophy of "**Static Ditches**": ensuring that all asynchronous work, once started, executes predictably along a pre-established path.
+"Structured Concurrency" and "Task-as-Context" together articulate the core philosophy of "**Static Channels**": ensuring that all asynchronous work, once started, executes predictably along a pre-established path.
 
 ## Core Features
 
