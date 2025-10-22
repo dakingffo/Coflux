@@ -70,8 +70,8 @@ int main() {
     {
         // 创建一个顶层task来管理一组并发连接
         {
-            using task_scheduler = coflux::scheduler<coflux::thread_pool_executor<1024>, coflux::timer_executor>;
-            auto env = coflux::make_environment(task_scheduler{ task_executor{ 3 }, coflux::timer_executor{} });
+            using task_scheduler = coflux::scheduler<coflux::thread_pool_executor<>, coflux::timer_executor>;
+            auto env = coflux::make_environment<task_scheduler>();
             auto server_task = [](auto& env) -> coflux::task<void, task_executor, task_scheduler> {
                 std::cout << "Server task starting 3 concurrent connections...\n";
                 co_await coflux::when_all(
@@ -125,7 +125,7 @@ int main() {
     std::cout << "\n\n--- Generator Demo Finished ---\n";
 
     // --- 3. 演示构造fork的range利用when将异步解析到同步作用域 ---
-    std::cout << "--- 3. Demonstrating A Task Range then using when(n) to parse Async operations into a Sync scope. ---\n";
+    std::cout << "\n--- 3. Demonstrating A Task Range then using when(n) to parse Async operations into a Sync scope. ---\n";
     {
         auto env = coflux::make_environment(coflux::scheduler{ task_executor{3} });
         auto print_nums = [](auto&)->coflux::task<int, task_executor> {
@@ -134,7 +134,7 @@ int main() {
             for (int i = 0; i < 10; i++) {
                 vec.push_back(nums(env, i));
             }
-            for (auto num : co_await(vec | coflux::when) | std::views::drop(2) | std::views::take(4)) {
+            for (auto num : co_await(vec | coflux::when(8)) | std::views::drop(2) | std::views::take(4)) {
                 std::cout << num << ' ';
             }
             }(env);

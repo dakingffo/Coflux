@@ -33,24 +33,24 @@ The example below demonstrates how to define a root task (`server_task`) that sp
 #include <coflux/scheduler.hpp>
 #include <coflux/combiner.hpp>
 
-using task_executor = coflux::thread_pool_executor<1024>;
+using exec = coflux::thread_pool_executor<1024>;
 
 // Simulate asynchronous network request reading
-coflux::fork<std::string, task_executor> async_read_request(auto&&, int client_id) {
+coflux::fork<std::string, exec> async_read_request(auto&&, int client_id) {
     std::cout << "[Client " << client_id << "] Waiting for request..." << std::endl;
     co_await std::chrono::milliseconds(200 + client_id * 100);
     co_return "Hello from client " + std::to_string(client_id);
 }
 
 // Simulate asynchronous network response writing
-coflux::fork<void, task_executor> async_write_response(auto&&, const std::string& response) {
+coflux::fork<void, exec> async_write_response(auto&&, const std::string& response) {
     std::cout << "  -> Echoing back: '" << response << "'" << std::endl;
     co_await std::chrono::milliseconds((rand() % 5) * 100);
     co_return;
 }
 
 // Handle a single connection using structured concurrency
-coflux::fork<void, task_executor> handle_connection(auto&&, int client_id) {
+coflux::fork<void, exec> handle_connection(auto&&, int client_id) {
     try {
         auto&& env = co_await coflux::context();
         auto request = co_await async_read_request(env, client_id);
@@ -65,9 +65,9 @@ coflux::fork<void, task_executor> handle_connection(auto&&, int client_id) {
 }
 
 int main() {
-    using task_scheduler = coflux::scheduler<coflux::thread_pool_executor<1024>, coflux::timer_executor>;
-    auto env = coflux::make_environment(task_scheduler{ task_executor{ 3 }, coflux::timer_executor{} });
-    auto server_task = [](auto& env) -> coflux::task<void, task_executor, task_scheduler> {
+    using sch = coflux::scheduler<exec, coflux::timer_executor>;
+    auto env = coflux::make_environment<sch>();
+    auto server_task = [](auto& env) -> coflux::task<void, exec, sch> {
         std::cout << "Server task starting 3 concurrent connections...\n";
         co_await coflux::when_all(
             handle_connection(co_await coflux::context(), 1),
