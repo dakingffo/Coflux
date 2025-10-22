@@ -16,7 +16,7 @@ static void BM_Pmr_ForkCreation(benchmark::State& state) {
     for (auto _ : state) {
         state.PauseTiming();
         std::pmr::monotonic_buffer_resource arena_resource{ memory_arena.data() , memory_arena.size() };
-        auto env = coflux::make_environment(coflux::scheduler<coflux::noop_executor>{}, &arena_resource);
+        auto env = coflux::make_environment(&arena_resource, coflux::scheduler<coflux::noop_executor>{});
         auto test_task = [&](auto&& env) -> coflux::task<void, coflux::noop_executor> {
             long long forks_to_create = state.range(0);
             size_t BATCH_SIZE = forks_to_create < 1000000 ? 10000 : 100000;
@@ -51,7 +51,7 @@ static void BM_PmrPool_ForkCreationAndDestruction(benchmark::State& state) {
         state.PauseTiming();
         std::pmr::monotonic_buffer_resource upstream_resource{ memory_arena.data() , memory_arena.size() };
         std::pmr::unsynchronized_pool_resource pool_resource{ &upstream_resource };
-        auto env = coflux::make_environment(coflux::scheduler<coflux::noop_executor>{}, &pool_resource);
+        auto env = coflux::make_environment(&pool_resource, coflux::scheduler<coflux::noop_executor>{});
 
         auto test_task = [&](const auto& env) -> coflux::task<void, coflux::noop_executor> {
             long long forks_to_create = state.range(0);

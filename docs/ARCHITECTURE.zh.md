@@ -215,11 +215,30 @@ environment协议串联了完整的结构化并发与异构执行系统：
 
 这两个函数的返回值类型是不同的。
 
-`
-template <schedulable Scheduler>
-make_environment(Scheduler&& sch,std::pmr::memory_resource* memo = std:::pmr::get_default_resource())
-`
-函数接收一份scheduler和一个内存资源指针（std::pmr::memory_resource*）。
+`make_environment`:
+
+```C++
+	template <schedulable Scheduler>
+	auto make_environment(std::pmr::memory_resource* memo, Scheduler&& sch) {
+		return environment(memo, std::forward<Scheduler>(sch));
+	}
+
+	template <schedulable Scheduler>
+	auto make_environment(Scheduler&& sch) {
+		return environment(std::pmr::get_default_resource(), std::forward<Scheduler>(sch));
+	}
+
+	template <schedulable Scheduler, executive...Executors>
+	auto make_environment(std::pmr::memory_resource* memo, Executors&&...execs) {
+		return environment(memo, Scheduler{std::forward<Executors>(execs)...});
+	}
+
+	template <schedulable Scheduler, executive...Executors>
+	auto make_environment(Executors&&...execs) {
+		return environment(std::pmr::get_default_resource(), Scheduler{ std::forward<Executors>(execs)... });
+	}
+```
+
 每个task都会将这两个信息拷贝到本地，以保证完整的执行上下文（scheduler内部使用shared_ptr）。
 这意味这个参数可以被多个task共享。
 

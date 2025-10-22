@@ -231,10 +231,31 @@ The environment protocol connects the complete structured concurrency and hetero
 
 The return types of these two functions are different.
 
-`template <schedulable Scheduler> make_environment(Scheduler&& sch,std::pmr::memory_resource* memo = std:::pmr::get_default_resource())`
-The function receives a `scheduler` and a memory resource pointer (`std::pmr::memory_resource*`).
+`make_environment`:
+
+```C++
+	template <schedulable Scheduler>
+	auto make_environment(std::pmr::memory_resource* memo, Scheduler&& sch) {
+		return environment(memo, std::forward<Scheduler>(sch));
+	}
+
+	template <schedulable Scheduler>
+	auto make_environment(Scheduler&& sch) {
+		return environment(std::pmr::get_default_resource(), std::forward<Scheduler>(sch));
+	}
+
+	template <schedulable Scheduler, executive...Executors>
+	auto make_environment(std::pmr::memory_resource* memo, Executors&&...execs) {
+		return environment(memo, Scheduler{std::forward<Executors>(execs)...});
+	}
+
+	template <schedulable Scheduler, executive...Executors>
+	auto make_environment(Executors&&...execs) {
+		return environment(std::pmr::get_default_resource(), Scheduler{ std::forward<Executors>(execs)... });
+	}
+```
 Each `task` copies this information locally to guarantee a complete execution context (the scheduler uses `shared_ptr` internally).
-This means the parameter can be shared by multiple tasks.
+This means the environment parameter can be shared by multiple tasks.
 
 `co_await coflux::this_task/this_fork::environment()`
 Accepts no values and this is determined by the parent environment. This parameter controls the construction of the DAG, and therefore, the first parameter of a `fork` must accept it by **reference**. The `fork` also obtains the type-erased scheduler and the parent environment's memory resource pointer here.
