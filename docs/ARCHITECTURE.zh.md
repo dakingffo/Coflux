@@ -114,7 +114,7 @@ fork_view，正如它的名字，观察着一个fork，因此不应该将fork_vi
 #### 异常处理
 
 异常可以跨线程捕获，就如同同步任务重异常击穿调用栈一样。如果某个task/fork抛出了异常，那么co_await调用处会知晓。这依赖于std::exception_ptr。
-同时提供then_with_result_or_error/then_with_or_error（only for task<void>/fork<void>）,用于处理异常指针的回调逻辑。
+同时提供`on_error_/on_cancel`（only for task<void>/fork<void>）,用于处理异常指针的回调逻辑或取消逻辑。
 
 #### 协程取消
 

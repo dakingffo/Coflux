@@ -123,7 +123,7 @@ We cannot guarantee that the workflow will always be smooth. Coflux aims for the
 #### Exception Handling
 
 Exceptions can be caught across threads, just as they pierce the call stack in synchronous tasks. If a `task`/`fork` throws an exception, the `co_await` call site will be notified. This relies on `std::exception_ptr`.
-We also provide `then_with_result_or_error`/`then_with_or_error` (only for `task<void>`/`fork<void>`) for handling callback logic with the exception pointer.
+We also provide `on_error_`/`on_cancel` (only for `task<void>`/`fork<void>`) for handling callback logic with the exception pointer or cancelled status.
 
 #### Coroutine Cancellation
 
