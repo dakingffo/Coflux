@@ -259,7 +259,7 @@ namespace coflux {
         template <bool Ownership>
         struct destroy_forks_awaiter;
 
-        template <bool Ownership, typename Scheduler>
+        template <schedulable Scheduler>
         struct get_scheduler_awaiter;
 
         template <bool Ownership>

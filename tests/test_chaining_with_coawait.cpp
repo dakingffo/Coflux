@@ -41,7 +41,7 @@ TEST(ChainingWithCoAwait, ForkOnValue) {
 
     auto test_task = [&](auto env) -> coflux::task<std::string, TestExecutor, TestScheduler> {
         // co_await 一个 fork，并链式调用 on_value
-        auto fork_ref = success_fork(co_await coflux::this_task::environment());
+        auto fork_ref = success_fork(co_await coflux::context());
 
         auto result = co_await fork_ref // co_await fork 本身
             .on_value([&](const std::string& v) { // 为其注册回调

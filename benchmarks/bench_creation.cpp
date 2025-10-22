@@ -23,7 +23,7 @@ static void BM_Pmr_ForkCreation(benchmark::State& state) {
             for (size_t i = 0; i < forks_to_create; i += BATCH_SIZE) {
                 state.ResumeTiming();
                 for (size_t j = 0; j < BATCH_SIZE && (i + j) < forks_to_create; ++j) {
-                    co_await trivial_fork(co_await coflux::this_task::environment());
+                    co_await trivial_fork(co_await coflux::context());
                 }
                 state.PauseTiming();
             }
@@ -58,7 +58,7 @@ static void BM_PmrPool_ForkCreationAndDestruction(benchmark::State& state) {
 
             state.ResumeTiming();
             for (long long i = 0; i < forks_to_create; ++i) {
-                trivial_fork(co_await coflux::this_task::environment());
+                trivial_fork(co_await coflux::context());
             }
             co_await coflux::this_task::destroy_forks();
             state.PauseTiming();

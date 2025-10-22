@@ -52,7 +52,7 @@ coflux::fork<void, task_executor> async_write_response(auto&&, const std::string
 // Handle a single connection using structured concurrency
 coflux::fork<void, task_executor> handle_connection(auto&&, int client_id) {
     try {
-        auto&& env = co_await coflux::this_fork::environment();
+        auto&& env = co_await coflux::context();
         auto request = co_await async_read_request(env, client_id);
         auto processed_response = request + " [processed by server]";
         co_await async_write_response(env, processed_response);
@@ -70,9 +70,9 @@ int main() {
     auto server_task = [](auto& env) -> coflux::task<void, task_executor, task_scheduler> {
         std::cout << "Server task starting 3 concurrent connections...\n";
         co_await coflux::when_all(
-            handle_connection(co_await coflux::this_task::environment(), 1),
-            handle_connection(co_await coflux::this_task::environment(), 2),
-            handle_connection(co_await coflux::this_task::environment(), 3)
+            handle_connection(co_await coflux::context(), 1),
+            handle_connection(co_await coflux::context(), 2),
+            handle_connection(co_await coflux::context(), 3)
         );
         std::cout << "All connections handled.\n";
         }(env);

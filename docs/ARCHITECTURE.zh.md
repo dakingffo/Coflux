@@ -195,7 +195,7 @@ coflux设计了make_fork工厂函数，它可以将任何同步工作打包成fo
 精确地说，make_fork是一个“工厂的工厂"：make_fork的返回值是一个返回fork的lambda表达式：因此make_fork包装的同步工作可以重复使用。
 如果同步工作有状态（如携带捕获列表的lambda），则该状态对所有fork共享，在这种情况下，coflux不保证对状态的访问是原子的。
 ```C++
-auto&& env = co_await coflux::this_task::environment(); // 见“environment协议”
+auto&& env = co_await coflux::context(); // 见“environment协议”
 auto my_work1 = coflux::make_fork<coflux::noop_executor>(fun1, env);
 co_await my_work1(1);
 co_await my_work1(2);
@@ -210,7 +210,7 @@ environment协议串联了完整的结构化并发与异构执行系统：
    `coflux::make_environment(...);`
    的返回值。
 2. fork的第一个参数必须是
-   `co_await coflux::this_task/this_fork::environment();`
+   `co_await coflux::context();`
    的返回值。
 
 这两个函数的返回值类型是不同的。
@@ -223,8 +223,8 @@ make_environment(Scheduler&& sch,std::pmr::memory_resource* memo = std:::pmr::ge
 每个task都会将这两个信息拷贝到本地，以保证完整的执行上下文（scheduler内部使用shared_ptr）。
 这意味这个参数可以被多个task共享。
 
-`co_await coflux::this_task/this_fork::environment()`
-不接受任何值。this_task/this_fork由父环境确定，这是由静态标签派发控制的。此参数会控制DAG图的构建，因此fork的首个参数必须以引用接受它。fork也在此获取类型擦除的scheduler和父环境的内存资源指针。
+`co_await coflux::context()`
+不接受任何值，由父环境确定。此参数会控制DAG图的构建，因此fork的首个参数必须以**引用**接受它。fork也在此获取类型擦除的scheduler和父环境的内存资源指针。
 
 所有task/fork都会构造到std::pmr::memory_resource*提供的空间上，这为更进一步的内存控制提供了可能。
 

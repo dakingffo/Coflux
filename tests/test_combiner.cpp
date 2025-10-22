@@ -43,7 +43,7 @@ coflux::fork<int, TestExecutor> delayed_cancel_check(auto&& env, std::chrono::mi
 TEST(CombinerTest, WhenAll_Success_Values) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });
     auto test_task = [](auto&&) -> coflux::task<std::tuple<int, int, int>, TestExecutor, TestScheduler> {
-        auto&& e = co_await coflux::this_task::environment();
+        auto&& e = co_await coflux::context();
         co_return co_await coflux::when_all(
             delayed_value(e, 1, 100ms),
             delayed_value(e, 2, 50ms),
@@ -60,7 +60,7 @@ TEST(CombinerTest, WhenAll_Success_Values) {
 TEST(CombinerTest, WhenAll_Success_Void) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });
     auto test_task = [](auto&&) -> coflux::task<void, TestExecutor, TestScheduler> {
-        auto&& e = co_await coflux::this_task::environment();
+        auto&& e = co_await coflux::context();
         co_await coflux::when_all(
             delayed_void(e, 100ms),
             delayed_void(e, 50ms)
@@ -73,7 +73,7 @@ TEST(CombinerTest, WhenAll_Success_Void) {
 TEST(CombinerTest, WhenAll_Success_Mixed) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });
     auto test_task = [](auto&&) -> coflux::task<std::tuple<int, std::monostate, std::string>, TestExecutor, TestScheduler> {
-        auto&& e = co_await coflux::this_task::environment();
+        auto&& e = co_await coflux::context();
         co_return co_await coflux::when_all(
             delayed_value(e, 1, 100ms),
             delayed_void(e, 50ms),
@@ -90,7 +90,7 @@ TEST(CombinerTest, WhenAll_Success_Mixed) {
 TEST(CombinerTest, WhenAll_OneError) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });
     auto test_task = [](auto&&) -> coflux::task<void, TestExecutor, TestScheduler> {
-        auto&& e = co_await coflux::this_task::environment();
+        auto&& e = co_await coflux::context();
         // Return type doesn't matter as it will throw
         co_await coflux::when_all(
             delayed_value(e, 1, 100ms),
@@ -105,7 +105,7 @@ TEST(CombinerTest, WhenAll_OneError) {
 TEST(CombinerTest, WhenAny_FirstWins) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });
     auto test_task = [](auto&&) -> coflux::task<std::variant<int, std::string>, TestExecutor, TestScheduler> {
-        auto&& e = co_await coflux::this_task::environment();
+        auto&& e = co_await coflux::context();
         co_return co_await coflux::when_any(
             delayed_value(e, 1, 100ms), // Slower
             [](auto&& env)->coflux::fork<std::string, TestExecutor> { co_await 50ms; co_return "fast"; }(e) // Faster
@@ -120,7 +120,7 @@ TEST(CombinerTest, WhenAny_FirstWins) {
 TEST(CombinerTest, WhenAny_WinnerThrows) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });
     auto test_task = [](auto&&) -> coflux::task<void, TestExecutor, TestScheduler> {
-        auto&& e = co_await coflux::this_task::environment();
+        auto&& e = co_await coflux::context();
         // Return type doesn't matter
         co_await coflux::when_any(
             delayed_value(e, 1, 100ms),
@@ -138,7 +138,7 @@ TEST(CombinerTest, WhenAny_WinnerThrows) {
 TEST(CombinerTest, RangeWhen_NLessThanSize) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });
     auto test_task = [](auto&&) -> coflux::task<std::vector<int>, TestExecutor, TestScheduler> {
-        auto&& e = co_await coflux::this_task::environment();
+        auto&& e = co_await coflux::context();
         std::vector<coflux::fork<int, TestExecutor>> tasks;
         tasks.push_back(delayed_value(e, 1, 150ms)); // Slow
         tasks.push_back(delayed_value(e, 2, 50ms));  // Fast
@@ -160,7 +160,7 @@ TEST(CombinerTest, RangeWhen_NLessThanSize) {
 TEST(CombinerTest, RangeWhen_NEqualSize) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });
     auto test_task = [](auto&&) -> coflux::task<std::vector<int>, TestExecutor, TestScheduler> {
-        auto&& e = co_await coflux::this_task::environment();
+        auto&& e = co_await coflux::context();
         std::vector<coflux::fork<int, TestExecutor>> tasks;
         tasks.push_back(delayed_value(e, 1, 150ms));
         tasks.push_back(delayed_value(e, 2, 50ms));
@@ -181,7 +181,7 @@ TEST(CombinerTest, RangeWhen_NEqualSize) {
 TEST(CombinerTest, RangeWhen_NGreaterThanSize) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });
     auto test_task = [](auto&&) -> coflux::task<std::vector<int>, TestExecutor, TestScheduler> {
-        auto&& e = co_await coflux::this_task::environment();
+        auto&& e = co_await coflux::context();
         std::vector<coflux::fork<int, TestExecutor>> tasks;
         tasks.push_back(delayed_value(e, 1, 150ms));
         tasks.push_back(delayed_value(e, 2, 50ms));
@@ -200,7 +200,7 @@ TEST(CombinerTest, RangeWhen_NGreaterThanSize) {
 TEST(CombinerTest, RangeWhen_EarlyError) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });
     auto test_task = [](auto&&) -> coflux::task<std::vector<int>, TestExecutor, TestScheduler> {
-        auto&& e = co_await coflux::this_task::environment();
+        auto&& e = co_await coflux::context();
         std::vector<coflux::fork<int, TestExecutor>> tasks;
         tasks.push_back(delayed_value(e, 1, 150ms));
         tasks.push_back(delayed_throw(e, 50ms, "EarlyWhenError")); // Faster, throws
@@ -217,7 +217,7 @@ TEST(CombinerTest, RangeWhen_EarlyError) {
 TEST(CombinerTest, RangeWhen_LateErrorIgnored) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });
     auto test_task = [](auto&&) -> coflux::task<std::vector<int>, TestExecutor, TestScheduler> {
-        auto&& e = co_await coflux::this_task::environment();
+        auto&& e = co_await coflux::context();
         std::vector<coflux::fork<int, TestExecutor>> tasks;
         tasks.push_back(delayed_value(e, 1, 10ms)); // Fastest
         tasks.push_back(delayed_value(e, 2, 50ms)); // Fast
@@ -237,7 +237,7 @@ TEST(CombinerTest, RangeWhen_LateErrorIgnored) {
 TEST(CombinerTest, RangeWhen_WithTakeView) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });
     auto test_task = [](auto&&) -> coflux::task<std::vector<int>, TestExecutor, TestScheduler> {
-        auto&& e = co_await coflux::this_task::environment();
+        auto&& e = co_await coflux::context();
         std::vector<coflux::fork<int, TestExecutor>> tasks;
         std::vector<int> source_data(10);
         std::iota(source_data.begin(), source_data.end(), 0); // 0 to 9

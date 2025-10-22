@@ -33,8 +33,8 @@ TEST(StructureTest, TaskDestructorJoinsChildren) {
         auto parent_task = [](auto&& env) -> coflux::task<void, TestExecutor, TestScheduler> {
             // 创建两个子fork，但不显式等待它们
             // counted_fork会立即开始执行
-            counted_fork(co_await coflux::this_task::environment());
-            counted_fork(co_await coflux::this_task::environment());
+            counted_fork(co_await coflux::context());
+            counted_fork(co_await coflux::context());
             co_return;
             }(env);
 
@@ -59,7 +59,7 @@ TEST(StructureTest, ExceptionPropagation) {
 
     auto catcher_task = [&](auto&& env) -> coflux::task<void, TestExecutor, TestScheduler> {
         // co_await一个会抛异常的fork
-        co_await throwing_fork(co_await coflux::this_task::environment());
+        co_await throwing_fork(co_await coflux::context());
         }(env);
     // get_result() 应该重新抛出子fork的异常
     EXPECT_THROW(catcher_task.get_result(), std::runtime_error);
@@ -74,7 +74,7 @@ coflux::fork<void, TestExecutor> recursion_fork(auto&&, auto&& env, std::atomic<
         co_return;
 }
 coflux::task<void, TestExecutor, TestScheduler> recursion_task(auto&& env, std::atomic<int>& cnt) {
-    co_await recursion_fork(co_await coflux::this_task::environment(), env, cnt);
+    co_await recursion_fork(co_await coflux::context(), env, cnt);
 }
 
 TEST(StructureTest, TaskForkRecursion) {
@@ -101,7 +101,7 @@ TEST(StructureTest, CancellationIsPropagated) {
 
     auto parent_task = [&](auto&& env) -> coflux::task<int, TestExecutor, TestScheduler> {
         // 启动子fork
-        cancellable_fork(co_await coflux::this_task::environment(), fork_was_cancelled);
+        cancellable_fork(co_await coflux::context(), fork_was_cancelled);
         // 在子fork完成前，主动取消自己
         co_await std::chrono::milliseconds(50);
         co_await coflux::this_task::cancel();

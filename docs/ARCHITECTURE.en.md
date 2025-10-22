@@ -212,7 +212,7 @@ Precisely, `make_fork` is a "factory of factories": the return value of `make_fo
 If the synchronous work is stateful (e.g., a lambda with a capture list), that state is shared among all `fork`s. In this scenario, Coflux does not guarantee atomic access to the state.
 
 ```c++
-auto&& env = co_await coflux::this_task::environment(); // See "environment protocol"
+auto&& env = co_await coflux::context(); // See "environment protocol"
 auto my_work1 = coflux::make_fork<coflux::noop_executor>(fun1, env);
 co_await my_work1(1);
 co_await my_work1(2);
@@ -227,7 +227,7 @@ The environment protocol connects the complete structured concurrency and hetero
 1.  The first parameter of a `task` must be the return value of
     `coflux::make_environment(...);`.
 2.  The first parameter of a `fork` must be the return value of
-    `co_await coflux::this_task/this_fork::environment();`.
+    `co_await coflux::context();`.
 
 The return types of these two functions are different.
 
@@ -237,7 +237,7 @@ Each `task` copies this information locally to guarantee a complete execution co
 This means the parameter can be shared by multiple tasks.
 
 `co_await coflux::this_task/this_fork::environment()`
-Accepts no values. `this_task`/`this_fork` is determined by the parent environment, which is controlled by static tag dispatch. This parameter controls the construction of the DAG, and therefore, the first parameter of a `fork` must accept it by reference. The `fork` also obtains the type-erased scheduler and the parent environment's memory resource pointer here.
+Accepts no values and this is determined by the parent environment. This parameter controls the construction of the DAG, and therefore, the first parameter of a `fork` must accept it by **reference**. The `fork` also obtains the type-erased scheduler and the parent environment's memory resource pointer here.
 
 All `task`/`fork`s are constructed onto the space provided by the `std::pmr::memory_resource*`, which opens up possibilities for more advanced memory control.
 

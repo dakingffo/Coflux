@@ -24,10 +24,10 @@ void horse_race() {
 		std::mt19937 mt(rd());
 		std::pair<int, int> score[4]{};
 		std::tie(score[0], score[1], score[2], score[3]) = co_await coflux::when_all(
-			horse(co_await coflux::this_task::environment(), 1, mt),
-			horse(co_await coflux::this_task::environment(), 2, mt),
-			horse(co_await coflux::this_task::environment(), 3, mt),
-			horse(co_await coflux::this_task::environment(), 4, mt)
+			horse(co_await coflux::context(), 1, mt),
+			horse(co_await coflux::context(), 2, mt),
+			horse(co_await coflux::context(), 3, mt),
+			horse(co_await coflux::context(), 4, mt)
 		);
 		std::sort(score, score + 4);
 		std::endl(std::cout);

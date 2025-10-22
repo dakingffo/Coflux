@@ -25,8 +25,8 @@ void cowboy_showdown() {
 		for (int i = 0; i < times; i++) {
 			std::cout << "In paralled world " << i << '\n';
 			auto res = co_await coflux::when_any(
-				cowboy(co_await coflux::this_task::environment(), "Jack", mt),
-				cowboy(co_await coflux::this_task::environment(), "Peter", mt)
+				cowboy(co_await coflux::context(), "Jack", mt),
+				cowboy(co_await coflux::context(), "Peter", mt)
 			);
 			std::visit([](const std::string& s) {
 				std::cout << s << "\n\n";

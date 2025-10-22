@@ -25,7 +25,7 @@ coflux::fork<void, task_executor> async_write_response(auto&&, const std::string
 // 使用结构化并发处理单个连接
 coflux::fork<void, task_executor> handle_connection(auto&&, int client_id) {
     try {
-        auto&& env = co_await coflux::this_fork::environment();
+        auto&& env = co_await coflux::context();
         auto request = co_await async_read_request(env, client_id);
         auto processed_response = request + " [processed by server]";
         co_await async_write_response(env, processed_response);
@@ -75,9 +75,9 @@ int main() {
             auto server_task = [](auto& env) -> coflux::task<void, task_executor, task_scheduler> {
                 std::cout << "Server task starting 3 concurrent connections...\n";
                 co_await coflux::when_all(
-                    handle_connection(co_await coflux::this_task::environment(), 1),
-                    handle_connection(co_await coflux::this_task::environment(), 2),
-                    handle_connection(co_await coflux::this_task::environment(), 3)
+                    handle_connection(co_await coflux::context(), 1),
+                    handle_connection(co_await coflux::context(), 2),
+                    handle_connection(co_await coflux::context(), 3)
                 );
                 std::cout << "All connections handled.\n";
                 }(env);
@@ -93,7 +93,7 @@ int main() {
             // 构建a->b->c且a->c的有向无环图图
             auto DAG_task = [&](auto&&) -> coflux::task<void, task_executor> {
                 std::cout << "Dag task starting find user's names by their ids...\n";
-                auto&& my_env = co_await coflux::this_task::environment();
+                auto&& my_env = co_await coflux::context();
                 auto&& get_user_id_fork = coflux::make_fork<task_executor>(get_user_id, my_env);
                 for (int x = 0; x < 5; x++) {
                     auto id = get_user_id_fork(x).get_view();
@@ -129,7 +129,7 @@ int main() {
     {
         auto env = coflux::make_environment(coflux::scheduler{ task_executor{3} });
         auto print_nums = [](auto&)->coflux::task<int, task_executor> {
-            auto&& env = co_await coflux::this_task::environment();
+            auto&& env = co_await coflux::context();
             std::vector<coflux::fork<int, task_executor>> vec;
             for (int i = 0; i < 10; i++) {
                 vec.push_back(nums(env, i));

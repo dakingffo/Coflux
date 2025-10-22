@@ -37,7 +37,7 @@ void ping_pong_game() {
 		std::random_device rd;
 		std::mt19937 mt(rd());
 		coflux::channel<int[]> ball;
-		player(co_await coflux::this_task::environment(), "Alice", ball, mt);
-		player(co_await coflux::this_task::environment(), "Bob", ball, mt);
+		player(co_await coflux::context(), "Alice", ball, mt);
+		player(co_await coflux::context(), "Bob", ball, mt);
 		}(env);
 }

@@ -21,8 +21,8 @@ TEST(ChannelTest, UnbufferedSendReceive) {
             co_return val;
             };
 
-        auto p_fork = producer(co_await coflux::this_task::environment(), ch);
-        auto c_fork = consumer(co_await coflux::this_task::environment(), ch);
+        auto p_fork = producer(co_await coflux::context(), ch);
+        auto c_fork = consumer(co_await coflux::context(), ch);
 
         // 等待consumer返回结果
         int result = co_await std::move(c_fork);
@@ -44,13 +44,13 @@ TEST(ChannelTest, CloseUnblocksWaitingReader) {
             co_return success;
             };
 
-        auto&& c_fork = consumer(co_await coflux::this_task::environment(), ch);
+        auto&& c_fork = consumer(co_await coflux::context(), ch);
 
         // 另起一个fork去关闭channel
         [](auto&& env, auto& ch) -> coflux::fork<void, TestExecutor> {
             co_await std::chrono::milliseconds(50);
             ch.close();
-            }(co_await coflux::this_task::environment(), ch);
+            }(co_await coflux::context(), ch);
 
         bool result = co_await std::move(c_fork);
         co_return result;
@@ -81,7 +81,7 @@ TEST(ChannelTest, BufferedMpmcStress) {
             }
             };
 
-        auto&& env_fork = co_await coflux::this_task::environment();
+        auto&& env_fork = co_await coflux::context();
         // 启动生产者和消费者
         consumer(env_fork, sum);
         consumer(env_fork, sum);

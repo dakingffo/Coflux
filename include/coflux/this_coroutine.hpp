@@ -236,8 +236,9 @@ namespace coflux {
             void await_resume() const noexcept {}
         };
 
-        template <bool Ownership, typename Scheduler = scheduler<void>>
-        struct get_scheduler_awaiter : public nonsuspend_awaiter_base, public ownership_tag<Ownership> {
+
+        template <schedulable Scheduler = scheduler<void>>
+        struct get_scheduler_awaiter : public nonsuspend_awaiter_base {
             get_scheduler_awaiter()  = default;
             ~get_scheduler_awaiter() = default;
 
@@ -265,7 +266,10 @@ namespace coflux {
 
         template <bool Ownership>
         struct environment_awaiter : public nonsuspend_awaiter_base, ownership_tag<Ownership> {
-            environment_awaiter()  = default;
+            environment_awaiter(promise_fork_base<Ownership>* p, std::pmr::memory_resource* m, scheduler<void> sch)
+                : parent_promise_(p)
+                , memo_(m)
+                , parent_scheduler_(sch) {}
             ~environment_awaiter() = default;
 
             environment_awaiter(const environment_awaiter&)            = delete;
@@ -279,11 +283,6 @@ namespace coflux {
 
             template <typename Promise>
             bool await_suspend(std::coroutine_handle<Promise> handle) noexcept {
-                auto&& env = handle.promise().get_environment();
-                parent_promise_ = env.parent_promise_;
-                memo_ = env.memo_;
-                parent_scheduler_ = env.parent_scheduler_;
-
                 return false;
             }
 
@@ -292,9 +291,11 @@ namespace coflux {
             }
 
             promise_fork_base<Ownership>* parent_promise_;
-            std::pmr::memory_resource* memo_;
+            std::pmr::memory_resource*    memo_;
             scheduler<void>			      parent_scheduler_;
         };
+
+        struct context_t {};
 
         namespace debug {
             template <bool Ownership>
@@ -387,9 +388,6 @@ namespace coflux {
         inline auto dispatch(Executor* exec) noexcept {
             return detail::dispatch_awaiter<true, Executor, std::suspend_never>{ exec };
         }
-        inline auto get_scheduler() noexcept {
-            return detail::get_scheduler_awaiter<true>{};
-        }
         using detail::sleep_for;
 
         // cancellation operations
@@ -401,9 +399,6 @@ namespace coflux {
         }
 
         // fork operations
-        inline auto environment() noexcept {
-            return detail::environment_awaiter<true>{};
-        }
         inline auto destroy_forks() noexcept {
             return detail::destroy_forks_awaiter<true>{};
         }
@@ -431,9 +426,6 @@ namespace coflux {
         inline auto dispatch(Executor* exec) noexcept {
             return detail::dispatch_awaiter<false, Executor, std::suspend_never>{ exec };
         }
-        inline auto get_scheduler() noexcept {
-            return detail::get_scheduler_awaiter<false>{};
-        }
         using detail::sleep_for;
 
         // cancellation operations
@@ -445,9 +437,6 @@ namespace coflux {
         }
 
         // fork operations
-        inline auto environment() noexcept {
-            return detail::environment_awaiter<false>{};
-        }
         inline auto destroy_forks() noexcept {
             return detail::destroy_forks_awaiter<false>{};
         }
@@ -461,6 +450,14 @@ namespace coflux {
                 return detail::debug::get_forks_counter_awaiter<false>{};
             }
         }
+    }
+
+    inline auto get_scheduler() noexcept {
+        return detail::get_scheduler_awaiter{};
+    }
+
+    inline auto context() noexcept {
+        return detail::context_t{};
     }
 }
 
