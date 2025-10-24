@@ -44,7 +44,7 @@ TEST(ChainingWithCoAwait, ForkOnValue) {
         auto fork_ref = success_fork(co_await coflux::context());
 
         auto result = co_await fork_ref // co_await fork 本身
-            .on_value([&](const std::string& v) { // 为其注册回调
+            .on_value([&](std::string v) { // 为其注册回调
             callback_executed = true;
             callback_value = v;
                 });
@@ -101,7 +101,7 @@ TEST(ChainingWithCoAwait, TaskMoveOnErrorFailure) {
 
     auto test_task = [&](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {
         try {
-            auto result = co_await std::move(error_task(env)) // co_await 右值 task
+            auto result = co_await error_task(env) // co_await 右值 task
                 .on_value([&](int v) {
                 value_callback_executed = true;
                     })
@@ -139,7 +139,7 @@ TEST(ChainingWithCoAwait, VoidTaskOnVoidSuccess) {
 
     auto test_task = [&](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {
         // co_await 返回 void 时，不能赋值给 auto
-        co_await std::move(void_success_task(env))
+        co_await void_success_task(env)
             .on_void([&]() { // on_void 回调
             void_callback_executed = true;
                 })

@@ -173,10 +173,11 @@ namespace coflux {
         struct callback_awaiter {
             constexpr bool await_ready() const noexcept { return false; }
 
-            template<typename Promise>
+            template <typename Promise>
             constexpr void await_suspend(std::coroutine_handle<Promise> handle) const noexcept {
                 auto& promise = handle.promise();
                 promise.invoke_callbacks();
+                std::atomic_thread_fence(std::memory_order_acquire);
                 promise.final_semaphore_release();
             }
 
@@ -218,7 +219,7 @@ namespace coflux {
             if (task_.done()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                 return false;
             }
-
+            std::atomic_thread_fence(std::memory_order_acquire);
             task_.then([exec = executor_, handle]() {
                 executor_traits::execute(exec, [handle]() {
                     handle.resume();
@@ -234,11 +235,9 @@ namespace coflux {
         }
 
     private:
-        task_type task_;
+        task_type        task_;
         executor_pointer executor_;
     };
-
-
 
     namespace detail {
         template <bool Ownership, typename Promise>

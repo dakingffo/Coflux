@@ -96,12 +96,12 @@ namespace coflux {
                             stop_source.request_stop();
                         });
                     if constexpr (std::is_void_v<typename std::remove_reference_t<std::tuple_element_t<I, task_type>>::value_type>) {
-                        fork.When_any_all_callback([cb = void_callback](const auto& res) {
+                        fork.On_result([cb = void_callback](const auto& res) {
                             cb.template operator() < I > (std::forward<decltype(res)>(res));
                             });
                     }
                     else {
-                        fork.When_any_all_callback([cb = callback](const auto& res) {
+                        fork.On_result([cb = callback](const auto& res) {
                             cb.template operator() < I > (std::forward<decltype(res)>(res));
                             });
                     }
@@ -233,12 +233,12 @@ namespace coflux {
                             stop_source.request_stop();
                         });
                     if constexpr (std::is_void_v<typename std::remove_reference_t<std::tuple_element_t<I, task_type>>::value_type>) {
-                        basic_task.When_any_all_callback([cb = void_callback](const auto& res) {
+                        basic_task.On_result([cb = void_callback](const auto& res) {
                             cb.template operator() < I > (std::forward<decltype(res)>(res));
                             });
                     }
                     else {
-                        basic_task.When_any_all_callback([cb = callback](const auto& res) {
+                        basic_task.On_result([cb = callback](const auto& res) {
                             cb.template operator() < I > (std::forward<decltype(res)>(res));
                             });
                     }
@@ -386,10 +386,10 @@ namespace coflux {
                         stop_source.request_stop();
                     });
                 if constexpr (std::is_object_v<value_type>) {
-                    basic_task.When_any_all_callback(callback);
+                    basic_task.On_result(callback);
                 }
                 else {
-                    basic_task.When_any_all_callback(void_callback);
+                    basic_task.On_result(void_callback);
                 }
             }
 

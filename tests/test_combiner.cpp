@@ -111,7 +111,6 @@ TEST(CombinerTest, WhenAny_FirstWins) {
             [](auto&& env)->coflux::fork<std::string, TestExecutor> { co_await 50ms; co_return "fast"; }(e) // Faster
         );
         }(env);
-
     auto result = test_task.get_result();
     EXPECT_EQ(result.index(), 1); // Index 1 is std::string
     EXPECT_EQ(std::get<1>(result), "fast");
@@ -134,6 +133,7 @@ TEST(CombinerTest, WhenAny_WinnerThrows) {
 }
 
 // --- Tests for when(n) using Ranges syntax ---
+
 
 TEST(CombinerTest, RangeWhen_NLessThanSize) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });

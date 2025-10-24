@@ -1,68 +1,73 @@
-# Coflux 性能验证
+# Coflux 性能基准测试
 
-本文档记录了 Coflux 框架核心任务单元 `fork` 的创建和销毁性能，以量化框架的运行时开销。
+## 引言
 
-## 1\. 测试目的：核心机制吞吐量验证
+性能是 Coflux 设计哲学的基石。本文档详述了旨在衡量 Coflux 核心任务生命周期管理（特别是 `coflux::fork` 实例的创建、执行和销毁）所涉及的**绝对最小开销**的微基准测试。
 
-本基准测试旨在精确测量 Coflux 框架中**单个极简 `fork` 任务的完整生命周期开销**（创建、启动、执行、销毁、结果获取）。
+测试结果验证了 **“静态的沟渠”** 架构、**task/fork与任务即上下文**模型，以及与 **C++ PMR（多态内存资源）** 标准的深度集成在理想条件下实现异步操作**接近零开销**的有效性。
 
-核心目标是验证 Coflux 的结构化并发模型与 PMR 内存模型相结合后，能否实现极高的任务吞吐量，从而使其适用于大规模、高频率的异步任务调度。
+## 方法论
 
-### 核心设计点验证：
+### 基准测试场景
 
-1.  **低延迟的协程生命周期：** 验证 `co_await trivial_fork(...)` 调用的开销。
-2.  **PMR 零开销分配：** 验证使用 `std::pmr::monotonic_buffer_resource` 时协程帧的分配效率。
+基准测试测量了创建、立即 `co_await`（在 `noop_executor` 上）和销毁大量 `coflux::fork<void, coflux::noop_executor>` 实例的吞吐量和延迟。使用的 `trivial_fork` 协程体为空（`co_return;`），确保测量结果反映的是框架自身的开销，而非工作负载的执行时间。
 
-## 2\. 测试方法论：`BM_Pmr_ForkCreation`
+### 使用的执行器
 
-### 2.1 任务定义
+* **`coflux::noop_executor`**: 此执行器立即在调用线程上执行函数。使用它来隔离基准测试中线程上下文切换的开销，纯粹聚焦于协程和框架机制。
 
-测试使用一个名为 `trivial_fork` 的极简协程任务：
+### 测试的内存资源
 
-```cpp
-// 一个极简的、热启动的fork
-coflux::fork<void, coflux::noop_executor> trivial_fork(auto&& env) {
-    co_return;
-}
-```
+测试了两种不同的 `std::pmr::memory_resource` 配置，以展示在不同内存管理策略下的性能：
 
-  - **类型：** `coflux::fork<void, coflux::noop_executor>`
-  - **特性：** 这是一个不发生挂起、使用 **No-Op 执行器** 的热启动任务。
-  - **测量的开销：** 测量的是协程帧的分配与构造、`fork` 对象的创建与销毁，以及 `co_await` 机制本身的最小协议开销。
+1.  **`std::pmr::monotonic_buffer_resource` (`BM_Pmr_ForkCreation`)**:
+    * **目的**: 衡量内存分配成本降至接近零（指针碰撞）时的理论最大吞吐量。内存从一个大缓冲区中线性分配，并且仅在资源被销毁时（每次基准测试迭代结束时）才释放。
+    * **实现**: 使用在堆上分配的 1GB 缓冲区（`std::vector<std::byte>`）作为 `monotonic_buffer_resource` 的服务内存。
 
-### 2.2 测试流程
+2.  **`std::pmr::unsynchronized_pool_resource` (`BM_PmrPool_ForkCreationAndDestruction`)**:
+    * **目的**: 衡量涉及内存重用的更实际场景的性能。此测试包括 `fork` 创建（`allocate`）和通过 `co_await coflux::this_task::destroy_forks()` 进行的显式销毁（`deallocate`）的成本，模拟内存在一个作用域内被积极管理的负载。
+    * **实现**: 使用 `unsynchronized_pool_resource`，并以同样的 1GB `monotonic_buffer_resource` 作为其上游分配器。
 
-测试使用 Google Benchmark 库，并结合 `std::pmr::monotonic_buffer_resource` 来模拟一个高性能环境：
+### 工具
 
-1.  **内存资源 (PMR)：** 每次迭代开始时，在堆上分配一个内存缓冲区（1GB），并使用 `std::pmr::monotonic_buffer_resource` 初始化。这保证了测试过程中内存分配（`operator new`）开销极低。
-2.  **任务创建：** 在主 `test_task` 内部，通过循环创建并立即 `co_await` 极简 `trivial_fork` 任务，数量由 `state.range(0)` 控制（从 10 万到 1000 万）。
-3.  **精确计时：** 使用 `state.PauseTiming()` 和 `state.ResumeTiming()` 确保计时只覆盖 **`co_await` 循环**（即任务创建和销毁的热路径）。
+* **Google Benchmark**: 基准测试使用 Google Benchmark 库 ([https://github.com/google/benchmark](https://github.com/google/benchmark)) 实现和执行。
 
-## 3\. 核心测试结果（吞吐量）
+## 硬件与软件环境
 
-以下是在指定硬件上运行该基准测试的结果（**Run on (16 X 3992 MHz CPU s)**）：
+* **CPU**: AMD Ryzen™ 9 7940H (Zen 4, 8 核心 / 16 线程, 最高 5.2 GHz Boost, 16MB L3 缓存)
+* **RAM**: 16GB DDR5
+* **操作系统**: Windows
+* **编译器**: Microsoft Visual C++ (MSVC, Release x64 模式编译)
+* **库**: 此 CPU/内存密集型基准测试**未使用** `liburing`。
 
-| Benchmark Name | Time (ns) | CPU Time (ns) | **Items Per Second (吞吐量)** | Single Operation Latency (ns/item) |
+## 测试结果
+
+下表总结了获得的关键结果：
+
+| 基准测试场景 | 峰值操作次数 (Forks) | 峰值吞吐量 (Items/Sec) | 约峰值延迟 (CPU Time/Op) | 备注 |
 | :--- | :--- | :--- | :--- | :--- |
-| `BM_Pmr_ForkCreation/100000` | 15.2 M | 9.7 M | **10.24 M/s** | 97.6 ns |
-| `BM_Pmr_ForkCreation/500000` | 71.2 M | 60.7 M | **8.22 M/s** | 121.6 ns |
-| `BM_Pmr_ForkCreation/1000000` | 145.3 M | 114.5 M | **8.72 M/s** | 114.6 ns |
-| `BM_Pmr_ForkCreation/3000000` | 467.7 M | 406.2 M | **7.38 M/s** | 135.5 ns |
-| `BM_Pmr_ForkCreation/5000000` | 871.0 M | 796.8 M | **6.27 M/s** | 159.4 ns |
-| `BM_Pmr_ForkCreation/7000000` | 1,302.8 M | 1,031.2 M | **6.78 M/s** | 147.5 ns |
-| `BM_Pmr_ForkCreation/10000000`| 1,940.7 M | 1,750.0 M | **5.14 M/s** | 194.5 ns |
+| `BM_Pmr_ForkCreation` | 1,000,000 | **~1440 万/秒** | **~69 纳秒** | Monotonic 分配器，仅创建 |
+| `BM_PmrPool_ForkCreationAndDestruction` | 100,000 | **~390 万/秒** | **~256 纳秒** | Pool 分配器，创建 + 销毁 |
 
-### 结论与解读
+*（延迟通过 $1 / \text{items\_per\_second}$ 计算得出。）*
 
-Coflux 框架在理想内存环境下的 `fork` 任务开销达到了以下级别：
+**观察结果:**
 
-$$\text{吞吐量级别：约 } \mathbf{5 \text{ 到 } 10 \text{ 百万次/秒}}$$
-$$\text{单次操作延迟（CPU Time）：约 } \mathbf{97 \text{ 到 } 195 \text{ 纳秒 (ns)}}$$
+* **Monotonic 性能**: 峰值吞吐量出现在约 100 万次操作附近，超过了**每秒 1400 万次 fork 生命周期**。在更高的操作次数下，随后的性能下降清晰地表明了 CPU L3 缓存限制（此 CPU 上为 16MB）的影响，证实瓶颈从软件开销转向了硬件内存延迟。
+* **Pool 性能**: 创建和销毁循环的峰值吞吐量出现在最低操作次数（10 万次），达到了近**每秒 400 万次往返操作**。与 Monotonic 场景相比，性能下降趋势平缓得多，突显了通过内存池重用内存所带来的出色缓存局部性。
 
-#### 性能要点：
+## 分析
 
-  - **超低延迟：** 单个 `fork` 任务的完整生命周期（包括协程帧和 `fork` 对象）在最优测试点仅需 **不到 100 纳秒（97.6 ns）** 的 CPU 时间。
-  - **高吞吐量：** 框架在不同任务量级上均能保持每秒 **500 万次以上** 的操作能力。
-  - **PMR 验证：** 极低的延迟数字验证了 **PMR 内存模型** 的有效性，确保了协程帧的内存分配不会成为性能瓶颈。
+1.  **核心开销接近零**: Monotonic 基准测试证实，在理想内存条件下，Coflux 的核心机制（通过 PMR 进行协程帧分配、Promise 构造、环境传播、`co_await` 机制）对每个 fork 生命周期施加的**开销低于 100 纳秒**。这验证了“零成本抽象”的目标。
 
-**总结：** Coflux 的设计理念成功转化为高性能模型。
+2.  **高效的内存重用**: Pool 基准测试表明，即使包含内存释放成本（`destroy_forks()` 触发 Pool 的 `deallocate`），Coflux 仍保持极高的吞吐量（每秒数百万次操作）。使用内存池进行完整的创建-销毁往返操作，其约 250ns 的延迟对于托管的异步任务而言，已属于业界**领先水平**。
+
+3.  **Pool 的缓存局部性优势**: Pool 基准测试的性能曲线比 Monotonic 基准测试的曲线明显更平坦，强调了内存重用对于大规模、长期运行应用保持持续性能的重要性。内存池有效地将工作内存保持在 CPU 缓存内。
+
+4.  **硬件瓶颈**: 这两个基准测试都表明，对于此类密集的、细粒度的任务创建，主要性能瓶颈迅速转向 CPU 缓存大小和内存带宽，而不是 Coflux 框架本身。
+
+## 结论
+
+基准测试结果有力地验证了 Coflux 的设计原则。通过利用 C++20 协程、结构化并发、PMR 分配器以及细致的底层实现（包括解决内存排序问题），Coflux 在核心异步任务管理方面实现了**优越的性能**。
+
+在核心路径上展示的低于 100ns 的开销，以及在启用主动内存管理时仍能达到的每秒数百万次操作的吞吐量，使 Coflux 成为构建要求苛刻的低延迟和高吞吐量并发系统的绝佳基础。

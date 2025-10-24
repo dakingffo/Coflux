@@ -23,10 +23,10 @@ namespace coflux {
 				}
 			}
 
-			result(const result&)			 = delete;
-			result(result&&)				 = delete;
+			result(const result&) = delete;
+			result(result&&) = delete;
 			result& operator=(const result&) = delete;
-			result& operator=(result&&)      = delete;
+			result& operator=(result&&) = delete;
 
 			template <typename Ref>
 			void emplace_value(Ref&& ref) {
@@ -84,10 +84,10 @@ namespace coflux {
 			result() : error_(nullptr), st_(running) {}
 			~result() = default;
 
-			result(const result&)			 = delete;
-			result(result&&)				 = delete;
+			result(const result&) = delete;
+			result(result&&) = delete;
 			result& operator=(const result&) = delete;
-			result& operator=(result&&)      = delete;
+			result& operator=(result&&) = delete;
 
 			void emplace_void() {
 				st_.store(completed, std::memory_order_release);
@@ -134,9 +134,9 @@ namespace coflux {
 
 		template <bool Ownership>
 		struct promise_fork_base {
-			using handle_type               = std::coroutine_handle<promise_fork_base<false>>;
-			using final_callback_type       = std::function<void()>;
-			using brother_handle            = std::conditional_t<Ownership, std::monostate, handle_type>;
+			using handle_type = std::coroutine_handle<promise_fork_base<false>>;
+			using final_callback_type = std::function<void()>;
+			using brother_handle = std::conditional_t<Ownership, std::monostate, handle_type>;
 			using cancellaton_callback_type = std::optional<std::stop_callback<std::function<void()>>>;
 
 			promise_fork_base() {
@@ -184,7 +184,7 @@ namespace coflux {
 			}
 
 			void final_semaphore_acquire() {
-				if (!already_final_.load(std::memory_order_acquire)) {
+				if (already_final_.load(std::memory_order_acquire) == false) {
 					sem_.acquire();
 				}
 			}
@@ -194,9 +194,8 @@ namespace coflux {
 				if (already_final_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
 					sem_.release();
 				}
-				already_final_.store(true, std::memory_order_release);
 			}
-			
+
 			std::stop_source      stop_source_;
 			handle_type           children_head_ = nullptr;
 			std::mutex	          mtx_;
@@ -208,8 +207,8 @@ namespace coflux {
 			std::binary_semaphore     sem_{ 0 };
 
 #if COFLUX_DEBUG
-			std::size_t									   children_counter_   = 0;
-			std::size_t									   id_				   = -1;
+			std::size_t									   children_counter_ = 0;
+			std::size_t									   id_ = -1;
 			std::coroutine_handle<promise_fork_base<true>> parent_task_handle_ = nullptr;
 
 			inline static std::atomic_size_t task_counter;
@@ -220,10 +219,10 @@ namespace coflux {
 
 		template <typename Ty, bool Ownership>
 		struct promise_result_base : public promise_fork_base<Ownership> {
-			using fork_base     = promise_fork_base<Ownership>;
-			using result_proxy  = result<Ty>;
-			using value_type    = typename result_proxy::value_type;
-			using result_type   = Ty;
+			using fork_base = promise_fork_base<Ownership>;
+			using result_proxy = result<Ty>;
+			using value_type = typename result_proxy::value_type;
+			using result_type = Ty;
 			using callback_type = std::function<void(const result_proxy&)>;
 
 			promise_result_base() {}
@@ -261,14 +260,13 @@ namespace coflux {
 
 			template <typename Func>
 			void emplace_or_invoke_callback(Func&& func) {
-				std::atomic<status>& st = this->get_status();
+				status st = this->result_.get_status().load(std::memory_order_acquire);
 				if (!(st == running || st == suspending)) {
 					func(this->result_);
-					return;
 				}
 				std::unique_lock<std::mutex> lock(this->mtx_);
-				auto new_st = st.load(std::memory_order_acquire);
-				if (!(new_st == running || new_st == suspending)) {
+				st = this->result_.get_status().load(std::memory_order_acquire);
+				if (!(st == running || st == suspending)) {
 					lock.unlock();
 					func(this->result_);
 				}
@@ -328,16 +326,16 @@ namespace coflux {
 				}
 			}
 
-			result_proxy result_;
-			std::vector<std::function<void(const result_proxy&)>> callbacks_;
+			result_proxy			   result_;
+			std::vector<callback_type> callbacks_;
 		};
 
 		template <bool Ownership>
 		struct promise_result_base<void, Ownership> : public promise_fork_base<Ownership> {
-			using fork_base     = promise_fork_base<Ownership>;
-			using result_proxy  = result<void>;
-			using value_type    = typename result_proxy::value_type;
-			using result_type   = std::monostate;
+			using fork_base = promise_fork_base<Ownership>;
+			using result_proxy = result<void>;
+			using value_type = typename result_proxy::value_type;
+			using result_type = std::monostate;
 			using callback_type = std::function<void(const result_proxy&)>;
 
 			promise_result_base() {}
@@ -370,14 +368,13 @@ namespace coflux {
 
 			template <typename Func>
 			void emplace_or_invoke_callback(Func&& func) {
-				std::atomic<status>& st = this->get_status();
+				status st = this->result_.get_status().load(std::memory_order_acquire);
 				if (!(st == running || st == suspending)) {
 					func(this->result_);
-					return;
 				}
 				std::unique_lock<std::mutex> lock(this->mtx_);
-				auto new_st = st.load(std::memory_order_acquire);
-				if (!(new_st == running || new_st == suspending)) {
+				st = this->result_.get_status().load(std::memory_order_acquire);
+				if (!(st == running || st == suspending)) {
 					lock.unlock();
 					func(this->result_);
 				}
@@ -437,13 +434,13 @@ namespace coflux {
 				}
 			}
 
-			result_proxy result_;
-			std::vector<std::function<void(const result_proxy&)>> callbacks_;
+			result_proxy               result_;
+			std::vector<callback_type> callbacks_;
 		};
 
 		template <typename Ty>
 		struct promise_yield_base {
-			using value_type  = Ty;
+			using value_type = Ty;
 			using yield_proxy = std::optional<Ty>;
 
 			void unhandled_exception() {
@@ -480,11 +477,11 @@ namespace coflux {
 		template <typename Ty, simple_awaitable Initial, simple_awaitable Final, bool Ownership>
 		struct promise_base<Ty, Initial, Final, true, Ownership>
 			: public promise_result_base<Ty, Ownership> {
-			using result_base  = promise_result_base<Ty, Ownership>;
-			using fork_base    = typename result_base::fork_base;
-			using value_type   = typename result_base::value_type;
+			using result_base = promise_result_base<Ty, Ownership>;
+			using fork_base = typename result_base::fork_base;
+			using value_type = typename result_base::value_type;
 			using result_proxy = typename result_base::result_proxy;
-			using result_type  = typename result_base::result_type;
+			using result_type = typename result_base::result_type;
 
 			promise_base() = default;
 			~promise_base() = default;
@@ -511,17 +508,17 @@ namespace coflux {
 		simple_awaitable Initial, simple_awaitable Final, bool Ownership>
 	struct promise<detail::basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>> final
 		: public detail::promise_base<Ty, Initial, Final, true, Ownership> {
-		using base			   = detail::promise_base<Ty, Initial, Final, true, Ownership>;
-		using result_base      = typename base::result_base;
-		using fork_base        = typename base::fork_base;
-		using value_type       = typename base::value_type;
-		using result_proxy     = typename base::result_proxy;
-		using result_type      = typename base::result_type;
-		using task_type        = detail::basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>;
-		using executor_traits  = coflux::executor_traits<Executor>;
-		using executor_type    = typename executor_traits::executor_type;
+		using base = detail::promise_base<Ty, Initial, Final, true, Ownership>;
+		using result_base = typename base::result_base;
+		using fork_base = typename base::fork_base;
+		using value_type = typename base::value_type;
+		using result_proxy = typename base::result_proxy;
+		using result_type = typename base::result_type;
+		using task_type = detail::basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>;
+		using executor_traits = coflux::executor_traits<Executor>;
+		using executor_type = typename executor_traits::executor_type;
 		using executor_pointer = typename executor_traits::executor_pointer;
-		using scheduler_type   = Scheduler;
+		using scheduler_type = Scheduler;
 
 		template <typename ...Args>
 			requires Ownership
@@ -741,8 +738,8 @@ namespace coflux {
 	struct promise<generator<Ty>> final
 		: public detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false> {
 		using base = detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false>;
-		using value_type     = typename base::value_type;
-		using yield_proxy    = typename base::yield_proxy;
+		using value_type = typename base::value_type;
+		using yield_proxy = typename base::yield_proxy;
 		using generator_type = generator<Ty>;
 
 		promise() noexcept {

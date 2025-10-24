@@ -21,14 +21,14 @@ namespace coflux {
 		public:
 			static_assert(std::is_object_v<Ty> || std::is_void_v<Ty>, "basic_task must be instantiated by the object type or void.");
 
-			using promise_type     = promise<basic_task>;
-			using value_type       = typename promise_type::value_type;
-			using result_type      = typename promise_type::result_type;
-			using executor_traits  = typename promise_type::executor_traits;
-			using executor_type    = typename promise_type::executor_type;
+			using promise_type = promise<basic_task>;
+			using value_type = typename promise_type::value_type;
+			using result_type = typename promise_type::result_type;
+			using executor_traits = typename promise_type::executor_traits;
+			using executor_type = typename promise_type::executor_type;
 			using executor_pointer = typename promise_type::executor_pointer;
-			using scheduler_type   = typename promise_type::scheduler_type;
-			using handle_type      = std::coroutine_handle<promise_type>;
+			using scheduler_type = typename promise_type::scheduler_type;
+			using handle_type = std::coroutine_handle<promise_type>;
 
 		public:
 			explicit basic_task(handle_type handle = nullptr) noexcept : handle_(handle) {}
@@ -39,11 +39,12 @@ namespace coflux {
 				}
 			}
 
-			basic_task(const basic_task&)			 = delete;
+			basic_task(const basic_task&) = delete;
 			basic_task& operator=(const basic_task&) = delete;
 
-			basic_task(basic_task && another) noexcept 
-				: handle_(std::exchange(another.handle_, nullptr)) {}
+			basic_task(basic_task && another) noexcept
+				: handle_(std::exchange(another.handle_, nullptr)) {
+			}
 			basic_task& operator=(basic_task && another) noexcept {
 				if (this != &another) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 					if (handle_) {
@@ -94,13 +95,11 @@ namespace coflux {
 				return handle_ ? !(get_status() == running || get_status() == suspending) : true;
 			}
 
-			executor_type& get_executor() const {
+			executor_type& get_executor() {
 				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_handle_error();
 				}
-				else {
-					return *(handle_.promise().executor_);
-				}
+				return *(handle_.promise().executor_);
 			}
 
 			status get_status() const noexcept {
@@ -112,117 +111,96 @@ namespace coflux {
 			}
 
 			template <typename Func>
-			basic_task& then(Func&& func)& {
-				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					handle_.promise().then(std::forward<Func>(func));
-					return *this;
-				}
-				else {
+			basic_task& then(Func && func)& {
+				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_handle_error();
 				}
+				handle_.promise().then(std::forward<Func>(func));
+				return *this;
 			}
 
 			template <typename Func>
 				requires std::is_object_v<value_type>
-			basic_task& on_value(Func&& func)& {
-				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					handle_.promise().on_value(std::forward<Func>(func));
-					return *this;
-				}
-				else {
+			basic_task& on_value(Func && func)& {
+				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_handle_error();
 				}
+				handle_.promise().on_value(std::forward<Func>(func));
+				return *this;
 			}
 
 			template <typename Func>
 				requires std::is_void_v<value_type>
-			basic_task& on_void(Func&& func)& {
-				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					handle_.promise().on_void(std::forward<Func>(func));
-					return *this;
-				}
-				else {
+			basic_task& on_void(Func && func)& {
+				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_handle_error();
 				}
+				handle_.promise().on_void(std::forward<Func>(func));
+				return *this;
 			}
 
 			template <typename Func>
 			basic_task& on_error(Func && func)& {
-				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					handle_.promise().on_error(std::forward<Func>(func));
-					return *this;
-				}
-				else {
+				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_handle_error();
 				}
+				handle_.promise().on_error(std::forward<Func>(func));
+				return *this;
 			}
 
 			template <typename Func>
-			basic_task& on_cancel(Func&& func)& {
-				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					handle_.promise().on_cancel(std::forward<Func>(func));
-					return *this;
-				}
-				else {
+			basic_task& on_cancel(Func && func)& {
+				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_handle_error();
 				}
+				handle_.promise().on_cancel(std::forward<Func>(func));
+				return *this;
 			}
-
 			template <typename Func>
-			basic_task&& then(Func&& func)&& {
-				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					handle_.promise().then(std::forward<Func>(func));
-					return std::move(*this);
-				}
-				else {
+			basic_task&& then(Func && func)&& {
+				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_handle_error();
 				}
+				handle_.promise().then(std::forward<Func>(func));
+				return std::move(*this);
 			}
 
 			template <typename Func>
 				requires std::is_object_v<value_type>
-			basic_task&& on_value(Func&& func)&& {
-				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					handle_.promise().on_value(std::forward<Func>(func));
-					return std::move(*this);
-				}
-				else {
+			basic_task&& on_value(Func && func)&& {
+				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_handle_error();
 				}
+				handle_.promise().on_value(std::forward<Func>(func));
+				return std::move(*this);
 			}
 
 			template <typename Func>
 				requires std::is_void_v<value_type>
-			basic_task&& on_void(Func&& func)&& {
-				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					handle_.promise().on_void(std::forward<Func>(func));
-					return std::move(*this);
-				}
-				else {
+			basic_task&& on_void(Func && func)&& {
+				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_handle_error();
 				}
+				handle_.promise().on_void(std::forward<Func>(func));
+				return std::move(*this);
 			}
 
 			template <typename Func>
-			basic_task&& on_error(Func&& func)&& {
-				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					handle_.promise().on_error(std::forward<Func>(func));
-					return std::move(*this);
-				}
-				else {
+			basic_task&& on_error(Func && func)&& {
+				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_handle_error();
 				}
+				handle_.promise().on_error(std::forward<Func>(func));
+				return std::move(*this);
 			}
 
 			template <typename Func>
-			basic_task&& on_cancel(Func&& func)&& {
-				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					handle_.promise().on_cancel(std::forward<Func>(func));
-					return std::move(*this);
-				}
-				else {
+			basic_task&& on_cancel(Func && func)&& {
+				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_handle_error();
 				}
+				handle_.promise().on_cancel(std::forward<Func>(func));
+				return std::move(*this);
 			}
 
 			template <typename...Args>
@@ -248,7 +226,7 @@ namespace coflux {
 			}
 
 			template <typename Func>
-			void When_any_all_callback(Func&& func) {
+			void On_result(Func && func) {
 				handle_.promise().emplace_or_invoke_callback(std::forward<Func>(func));
 			}
 
@@ -259,7 +237,7 @@ namespace coflux {
 			}
 
 			template <typename Func>
-			void Replace_cancellation_callback(std::stop_token&& token, Func&& cb) {
+			void Replace_cancellation_callback(std::stop_token && token, Func && cb) {
 				handle_.promise().cancellation_callback_.emplace(std::move(token), std::move(cb));
 			}
 
@@ -288,14 +266,14 @@ namespace coflux {
 		static_assert(std::is_object_v<Ty> || std::is_void_v<Ty>, "fork_view must be instantiated by the object type or void.");
 
 		using promise_type = detail::promise_result_base<Ty, false>;
-		using value_type   = typename promise_type::value_type;
-		using result_type  = typename promise_type::result_type;
-		using handle_type  = std::coroutine_handle<promise_type>;
+		using value_type = typename promise_type::value_type;
+		using result_type = typename promise_type::result_type;
+		using handle_type = std::coroutine_handle<promise_type>;
 
 	public:
 		~fork_view() = default;
 
-		fork_view(const fork_view&)			   = default;
+		fork_view(const fork_view&) = default;
 		fork_view& operator=(const fork_view&) = default;
 
 		decltype(auto) get_result()& {
@@ -317,67 +295,35 @@ namespace coflux {
 		}
 
 		template <typename Func>
-		fork_view& then(Func&& func)& {
+		fork_view& then(Func && func) {
 			handle_.promise().then(std::forward<Func>(func));
 			return *this;
 		}
 
 		template <typename Func>
 			requires std::is_object_v<value_type>
-		fork_view& on_value(Func&& func)& {
+		fork_view& on_value(Func && func) {
 			handle_.promise().on_value(std::forward<Func>(func));
 			return *this;
 		}
 
 		template <typename Func>
 			requires std::is_void_v<value_type>
-		fork_view& on_void(Func&& func)& {
+		fork_view& on_void(Func && func) {
 			handle_.promise().on_void(std::forward<Func>(func));
 			return *this;
 		}
 
 		template <typename Func>
-		fork_view& on_error(Func&& func)& {
+		fork_view& on_error(Func && func) {
 			handle_.promise().on_error(std::forward<Func>(func));
 			return *this;
 		}
 
 		template <typename Func>
-		fork_view& on_cancel(Func&& func)& {
+		fork_view& on_cancel(Func && func) {
 			handle_.promise().on_cancel(std::forward<Func>(func));
 			return *this;
-		}
-
-		template <typename Func>
-		fork_view&& then(Func&& func)&& {
-			handle_.promise().then(std::forward<Func>(func));
-			return std::move(*this);
-		}
-
-		template <typename Func>
-			requires std::is_object_v<value_type>
-		fork_view&& on_value(Func&& func)&& {
-			handle_.promise().on_value(std::forward<Func>(func));
-			return std::move(*this);
-		}
-
-		template <typename Func>
-			requires std::is_void_v<value_type>
-		fork_view&& on_void(Func&& func)&& {
-			handle_.promise().on_void(std::forward<Func>(func));
-			return std::move(*this);
-		}
-
-		template <typename Func>
-		fork_view&& on_error(Func&& func)&& {
-			handle_.promise().on_error(std::forward<Func>(func));
-			return std::move(*this);
-		}
-
-		template <typename Func>
-		fork_view&& on_cancel(Func&& func)&& {
-			handle_.promise().on_cancel(std::forward<Func>(func));
-			return std::move(*this);
 		}
 
 	private:
@@ -389,17 +335,12 @@ namespace coflux {
 		friend struct awaiter;
 
 		template <typename Func>
-		void When_any_all_callback(Func && func) {
-			if constexpr (std::is_object_v<value_type>) {
-				then_with_result_or_error(std::forward<Func>(func));
-			}
-			else {
-				then_with_error(std::forward<Func>(func));
-			}
+		void On_result(Func&& func) {
+			handle_.promise().emplace_or_invoke_callback(std::forward<Func>(func));
 		}
 
 		void Nothrow_join() {
-			if (handle_ && !handle_.done()) {
+			if (handle_) {
 				handle_.promise().final_semaphore_acquire();
 			}
 		}
