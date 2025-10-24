@@ -1,5 +1,3 @@
-This is the complete English translation of your revised `README.md` document, including the new "Performance" section:
-
 # Coflux: Coroutines Conflux
 
 [](https://isocpp.org/std/the-standard)
