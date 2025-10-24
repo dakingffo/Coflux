@@ -6,7 +6,7 @@
 #include <coflux/channel.hpp>
 #include <coflux/generator.hpp>
 
-using task_executor = coflux::thread_pool_executor<1024>;
+using task_executor = coflux::thread_pool_executor<>;
 
 // 模拟异步读取网络请求
 coflux::fork<std::string, task_executor> async_read_request(auto&&, int client_id) {

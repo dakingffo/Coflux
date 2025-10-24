@@ -7,7 +7,7 @@
 #include <chrono>
 #include <numeric> // For std::iota
 
-using TestExecutor = coflux::thread_pool_executor<4>; // Use multiple threads for concurrency
+using TestExecutor = coflux::thread_pool_executor<>; // Use multiple threads for concurrency
 using TestScheduler = coflux::scheduler<TestExecutor, coflux::timer_executor>;
 using namespace std::chrono_literals;
 
@@ -243,7 +243,7 @@ TEST(CombinerTest, RangeWhen_WithTakeView) {
         std::iota(source_data.begin(), source_data.end(), 0); // 0 to 9
 
         auto task_gen = source_data | std::views::transform([&](int i) {
-            return delayed_value(e, i, std::chrono::milliseconds(10 * (10 - i))); // Make later tasks faster
+            return delayed_value(e, i, std::chrono::milliseconds(50 * (10 - i))); // Make later tasks faster
             });
 
         // Take 5 tasks, wait for the first 3 of those 5

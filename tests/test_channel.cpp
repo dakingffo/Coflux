@@ -1,4 +1,3 @@
-/* 
 // fixing race condition...
 #include <gtest/gtest.h>
 #include <coflux/task.hpp>
@@ -109,4 +108,3 @@ TEST(ChannelTest, BufferedMpmcStress) {
     // 简化，只运行并获取结果。
     test_task.join();
 }
-*/

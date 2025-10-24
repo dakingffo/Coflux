@@ -260,8 +260,8 @@ namespace coflux {
 				return;
 			}
 
-			if (!queue_.full()) {
-				queue_.push(writer.what());
+			if (queue_.size() < capacity()) {
+				queue_.push_back(writer.what());
 				lock.unlock();
 				writer_proxy.resume(true);
 			}
@@ -277,12 +277,13 @@ namespace coflux {
 			auto& reader = reader_proxy.get_reader<channel>();
 
 			if (!queue_.empty()) {
-				reader.read(queue_.poll().value());
+				reader.read(std::move(queue_.front()));
+				queue_.pop_front();
 				detail::channel_awaiter_proxy writer_proxy;
 				if (!writers_.empty()) {
 					writer_proxy = std::move(writers_.front());
 					writers_.pop_front();
-					queue_.push(writer_proxy.get_writer<channel>().what());
+					queue_.push_back(writer_proxy.get_writer<channel>().what());
 				}
 				lock.unlock();
 				if (writer_proxy) {
@@ -341,7 +342,7 @@ namespace coflux {
 		static constexpr std::size_t capacity_ = N;
 
 		std::atomic_bool						  active_;
-		concurrency_queue<Ty, N>				  queue_;
+		std::deque<Ty>						      queue_;
 		std::deque<detail::channel_awaiter_proxy> writers_;
 		std::deque<detail::channel_awaiter_proxy> readers_;
 		std::mutex								  mtx_;

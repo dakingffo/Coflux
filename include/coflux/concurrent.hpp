@@ -8,31 +8,35 @@
 #include "forward_declaration.hpp"
 
 namespace coflux {
-	template <typename Ty, std::size_t N, normal_queue_base Container = std::deque<Ty>>
-	class concurrency_queue {
+	template <typename Container = std::deque<std::function<void()>>>
+	class unbounded_queue {
 	public:
-		static_assert(std::is_object_v<Ty>, "concurrency_queue must be instantiated by the object type.");
-		static_assert(N > 0, "concurrency_queue size must be greater than zero.");
-
 		using container_type  = Container;
 		using value_type      = typename container_type::value_type;
 		using size_type       = typename container_type::size_type;
 		using reference       = typename container_type::reference;
 		using const_reference = typename container_type::const_reference;
 
-		using allocator_type  = std::conditional_t<has_allocator<Container>,
+		using allocator_type  = std::conditional_t<has_allocator<container_type>,
 			typename container_type::allocator_type, std::allocator<value_type>>;
 
 	public:
-		concurrency_queue(const allocator_type& alloc = allocator_type())
-			: cont_(alloc), size_(0) {
-		}
-		~concurrency_queue() = default;
+		template <typename...Args>
+			requires (!has_allocator<container_type>)
+		unbounded_queue(Args&&...args)
+			: cont_(std::forward<Args>(args)...), size_(0) {}
 
-		concurrency_queue(const concurrency_queue&)            = delete;
-		concurrency_queue(concurrency_queue&&)                 = delete;
-		concurrency_queue& operator=(const concurrency_queue&) = delete;
-		concurrency_queue& operator=(concurrency_queue&&)      = delete;
+		template <typename...Args>
+			requires has_allocator<container_type>
+		unbounded_queue(const allocator_type& alloc = allocator_type(), Args&&...args)
+			: cont_(alloc, std::forward<Args>(args)...), size_(0) {}
+
+		~unbounded_queue() = default;
+
+		unbounded_queue(const unbounded_queue&)            = delete;
+		unbounded_queue(unbounded_queue&&)                 = delete;
+		unbounded_queue& operator=(const unbounded_queue&) = delete;
+		unbounded_queue& operator=(unbounded_queue&&)      = delete;
 
 		reference front() {
 			std::lock_guard<std::mutex> guard(mtx_);
@@ -48,10 +52,6 @@ namespace coflux {
 			return size_.load(std::memory_order_acquire) == 0;
 		}
 
-		bool full() noexcept {
-			return size_.load(std::memory_order_acquire) == N;
-		}
-
 		size_type size() noexcept {
 			return size_.load(std::memory_order_acquire);
 		}
@@ -59,9 +59,6 @@ namespace coflux {
 		template <typename...Args>
 		void emplace(Args&&...args) {
 			std::unique_lock<std::mutex> lock(mtx_);
-			not_full_cv_.wait(lock, [this]() {
-				return size_.load(std::memory_order_acquire) < N;
-				});
 			cont_.emplace_back(std::forward<Args>(args)...);
 			size_.fetch_add(1, std::memory_order_release);
 			not_empty_cv_.notify_one();
@@ -73,31 +70,6 @@ namespace coflux {
 
 		void push(reference& value) {
 			emplace(std::move(value));
-		}
-
-		template <typename Rep, typename Period, typename...Args>
-		bool emplace_for(const std::chrono::duration<Rep, Period>& wait_time, Args&&...args) {
-			std::unique_lock<std::mutex> lock(mtx_);
-			bool wait_result = not_full_cv_.wait_for(lock, wait_time, [this]() {
-				return size_.load(std::memory_order_acquire) < N;
-				});
-			if (!wait_result) {
-				return false;
-			}
-			cont_.emplace_back(std::forward<Args>(args)...);
-			size_.fetch_add(1, std::memory_order_release);
-			not_empty_cv_.notify_one();
-			return true;
-		}
-
-		template <typename Rep, typename Period>
-		bool push(const_reference value, const std::chrono::duration<Rep, Period>& wait_time) {
-			return emplace_for(wait_time, value);
-		}
-
-		template <typename Rep, typename Period>
-		bool push(reference& value, const std::chrono::duration<Rep, Period>& wait_time) {
-			return emplace_for(wait_time, std::move(value));
 		}
 
 		bool pop(const std::atomic_bool& continuation = true) {
@@ -112,23 +84,7 @@ namespace coflux {
 			if (size_.fetch_sub(1, std::memory_order_acq_rel)) {
 				not_empty_cv_.notify_one();
 			}
-			not_full_cv_.notify_one();
-		}
-
-		template <typename Rep, typename Period>
-		bool pop(const std::atomic_bool& continuation, const std::chrono::duration<Rep, Period>& wait_time) {
-			std::unique_lock<std::mutex> lock(mtx_);
-			bool wait_result = not_empty_cv_.wait_for(lock, wait_time, [this, &continuation]() {
-				return size_.load(std::memory_order_acquire) > 0 || !continuation.load(std::memory_order_acquire);
-				});
-			if (!continuation || size_.load(std::memory_order_relaxed) == 0 || !wait_result) {
-				return false;
-			}
-			cont_.pop_front();
-			if (size_.fetch_sub(1, std::memory_order_acq_rel)) {
-				not_empty_cv_.notify_one();
-			}
-			not_full_cv_.notify_one();
+			return true;
 		}
 
 		std::optional<value_type> poll(const std::atomic_bool& continuation = true) {
@@ -144,7 +100,6 @@ namespace coflux {
 			if (size_.fetch_sub(1, std::memory_order_acq_rel)) {
 				not_empty_cv_.notify_one();
 			}
-			not_full_cv_.notify_one();
 			return std::optional<value_type>(std::move(element));
 		}
 
@@ -162,7 +117,6 @@ namespace coflux {
 			if (size_.fetch_sub(1, std::memory_order_acq_rel)) {
 				not_empty_cv_.notify_one();
 			}
-			not_full_cv_.notify_one();
 			return std::optional<value_type>(std::move(element));
 		}
 
@@ -170,23 +124,17 @@ namespace coflux {
 			return not_empty_cv_;
 		}
 
-		std::condition_variable& not_full_cv() {
-			return not_full_cv_;
-		}
-
 	private:
 		container_type			cont_;
-		std::condition_variable not_full_cv_;
 		std::condition_variable not_empty_cv_;
 		std::mutex				mtx_;
 		std::atomic<size_type>	size_;
 	};
 
 #if COFLUX_UNDER_CONSTRUCTION 
-	template <typename Ty, std::size_t N, typename Allocator>
-	class concurrency_queue<Ty, N, std::vector<Ty, Allocator>> {
+	template <std::size_t N, typename Allocator>
+	class lockfree_queue<N, std::vector<std::function<void()>, Allocator>> {
 	public:
-		static_assert(std::is_object_v<Ty>, "concurrency_queue must be instantiated by the object type.");
 		static_assert(N > 0, "concurrency_queue size must be greater than zero.");
 
 		using container_type = std::vector<Ty, Allocator>;
@@ -217,32 +165,30 @@ namespace coflux {
 
 #endif
 
-	template <std::size_t TaskQueueSize>
-	class thread_pool_executor;
-
-	template <typename TaskQueue = concurrency_queue<std::function<void()>, 1024>>
+	template <typename TaskQueue>
 	class thread_pool;
 
 	enum class mode : bool {
 		fixed, cached
 	};
 
-	template <std::size_t TaskQueueSize, typename Container>
-	class thread_pool<concurrency_queue<std::function<void()>, TaskQueueSize, Container>> {
+	template <typename Container>
+	class thread_pool<unbounded_queue<Container>> {
 	public:
-		using queue_type = concurrency_queue<std::function<void()>, TaskQueueSize, Container>;
+		using queue_type     = unbounded_queue<Container>;
 		using allocator_type = typename queue_type::allocator_type;
 
 	public:
+		template <typename...Args>
 		explicit thread_pool(
 			std::size_t      basic_thread_size     = std::thread::hardware_concurrency(),		//set basic thread size
 			mode             run_mode              = mode::fixed,								//set mode
 			std::size_t      thread_size_threshold = std::thread::hardware_concurrency() * 2,	//set thread size threshold(when cached)
-			const allocator_type& alloc            = allocator_type())							//set allocator for task queue						
+			Args&&...        args)																//arguments for task queue						
 			: basic_thread_size_(basic_thread_size)
 			, mode_(run_mode)
 			, thread_size_threshold_(thread_size_threshold)
-			, task_queue_(alloc) {
+			, task_queue_(std::forward<Args>(args)...) {
 			run();
 		}
 		~thread_pool() {
@@ -270,7 +216,6 @@ namespace coflux {
 					thread_working_[i] = false;
 					thread_list_.emplace_back(std::thread{});
 				}
-
 			}
 		}
 
@@ -300,15 +245,12 @@ namespace coflux {
 				auto result_ptr = std::make_shared<std::packaged_task<decltype(func(args...))()>>(
 					std::bind(std::forward<Func>(func), std::forward<decltype(args)>(args)...)
 				);
-				bool wait_result = task_queue_.emplace_for(std::chrono::seconds(60),
+				task_queue_.emplace(
 					[result_ptr]() -> void {
 						(*result_ptr)();
 					});
-				if (!wait_result) {
-					Submit_error();
-				}
 				if (mode_ == mode::cached) {
-					if (task_queue_.full() && thread_size_ < thread_size_threshold_) {
+					if (task_queue_.size() > thread_size_ * thread_size_ && thread_size_ < thread_size_threshold_) {
 						Add_thread();
 					}
 				}
@@ -341,7 +283,7 @@ namespace coflux {
 		}
 
 		std::size_t size() const noexcept {
-			return static_cast<std::size_t>(thread_size_);
+			return thread_size_.load(std::memory_order_acquire);
 		}
 
 	private:

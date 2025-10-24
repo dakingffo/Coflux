@@ -111,24 +111,19 @@ namespace coflux {
 	template <typename Container>
 	concept has_allocator = requires{ typename Container::allocator_type; };
 
+	/*
 	template <typename Container>
-	concept normal_queue_base = requires(Container cont) {
-		requires
-		requires {
-			{ cont.front() };
-			{ cont.back() };
-			{ cont.pop_front() };
-			{ cont.push_back() };
-			typename Container::value_type;
-			typename Container::size_type;
-			typename Container::reference;
-			typename Container::const_reference;
-	}
-	|| requires {
+	concept unbounded_queue_base = requires(Container cont) {
+		{ cont.front() };
+		{ cont.back() };
+		{ cont.pop_front() };
+		{ cont.push_back() };
 		typename Container::value_type;
-		std::same_as<Container, std::vector<typename Container::value_type>>;
+		typename Container::size_type;
+		typename Container::reference;
+		typename Container::const_reference;
 	};
-	};
+	*/
 
 #undef  COFLUX_CONCURRENR_CONCEPTS
 #define COFLUX_EXECUTIVE_CONCEPTS

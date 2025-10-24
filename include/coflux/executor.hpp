@@ -32,23 +32,23 @@ namespace coflux {
 		}
 	};
 
-	template <std::size_t TaskQueueSize = 1024>
+    template <typename TaskQueue = unbounded_queue<>>
 	class thread_pool_executor {
 	public:
-		using thread_pool    = coflux::thread_pool<concurrency_queue<std::function<void()>, TaskQueueSize>>;
+		using thread_pool    = coflux::thread_pool<TaskQueue>;
 		using queue_type     = typename thread_pool::queue_type;
 		using container_type = typename queue_type::container_type;
 		using allocator_type = typename thread_pool::allocator_type;
 
 	public:
+		template <typename...Args>
 		thread_pool_executor(
 			std::size_t		      basic_thread_size		= std::thread::hardware_concurrency(),
 			mode                  run_mode			    = mode::fixed,
 			std::size_t		      thread_size_threshold = std::thread::hardware_concurrency() * 2,
-			const allocator_type& alloc				    = allocator_type())
+			Args&&...			  args)
 			: pool_(std::make_unique<thread_pool>(
-				basic_thread_size, run_mode, thread_size_threshold, alloc)) {
-		}
+				basic_thread_size, run_mode, thread_size_threshold, std::forward<Args>(args)...)) {}
 		~thread_pool_executor() = default;
 
 		thread_pool_executor(const thread_pool_executor&)				= delete;
@@ -78,8 +78,7 @@ namespace coflux {
 
 	public:
 		timer_executor()
-			: thread_(std::make_unique<timer_thread>()) {
-		}
+			: thread_(std::make_unique<timer_thread>()) {}
 		~timer_executor() = default;
 
 		timer_executor(const timer_executor&) = delete;
