@@ -177,8 +177,10 @@ namespace coflux {
             constexpr void await_suspend(std::coroutine_handle<Promise> handle) const noexcept {
                 auto& promise = handle.promise();
                 promise.invoke_callbacks();
-                std::atomic_thread_fence(std::memory_order_acquire);
-                promise.final_semaphore_release();
+                bool expected = false;
+                if (promise.already_final_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+                    promise.sem_.release();
+                }
             }
 
             constexpr void await_resume() const noexcept {}
@@ -219,7 +221,7 @@ namespace coflux {
             if (task_.done()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                 return false;
             }
-            std::atomic_thread_fence(std::memory_order_acquire);
+            std::atomic_signal_fence(std::memory_order_acquire);
             task_.then([exec = executor_, handle]() {
                 executor_traits::execute(exec, [handle]() {
                     handle.resume();

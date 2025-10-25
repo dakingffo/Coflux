@@ -38,7 +38,7 @@ namespace coflux {
 
         template <typename Promise>
         void await_suspend(std::coroutine_handle<Promise> handle) {
-            continuation_.store(handle, std::memory_order_release);
+            continuation_.store(handle, std::memory_order_acq_rel);
             auto callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_]
                 <std::size_t I>(const auto& const_fork_result) {
                 auto& fork_result = const_cast<std::remove_cvref_t<decltype(const_fork_result)>&>(const_fork_result);
@@ -171,7 +171,7 @@ namespace coflux {
 
         template <typename Promise>
         void await_suspend(std::coroutine_handle<Promise> handle) {
-            continuation_.store(handle, std::memory_order_release);
+            continuation_.store(handle, std::memory_order_acq_rel);
             auto callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
                 <std::size_t I>(const auto & const_basic_task_result) {
                 auto& basic_task_result = const_cast<std::remove_cvref_t<decltype(const_basic_task_result)>&>(const_basic_task_result);
@@ -313,7 +313,7 @@ namespace coflux {
         template <typename Promise>
         void await_suspend(std::coroutine_handle<Promise> handle) {
             n_ = std::min(n_, (std::size_t)std::ranges::distance(basic_tasks_));
-            continuation_.store(handle, std::memory_order_release);
+            continuation_.store(handle, std::memory_order_acq_rel);
             auto callback = [handle, n = n_, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
                 (const auto& const_basic_task_result) {
                 auto& basic_task_result = const_cast<std::remove_cvref_t<decltype(const_basic_task_result)>&>(const_basic_task_result);

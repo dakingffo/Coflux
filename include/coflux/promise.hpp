@@ -189,13 +189,6 @@ namespace coflux {
 				}
 			}
 
-			void final_semaphore_release() {
-				bool expected = false;
-				if (already_final_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
-					sem_.release();
-				}
-			}
-
 			std::stop_source      stop_source_;
 			handle_type           children_head_ = nullptr;
 			std::mutex	          mtx_;

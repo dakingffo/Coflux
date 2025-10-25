@@ -36,7 +36,7 @@ Because `noop_executor` does nothing, the task will resume on the `thread_pool_e
 #include <coflux/combiner.hpp>
 
 using noop = coflux::noop_executor;
-using pool = coflux::thread_pool_executor<1024>;
+using pool = coflux::thread_pool_executor<>;
 using sche = coflux::scheduler<noop, pool, coflux::timer_executor>;
 
 // Simulate asynchronous network request reading

@@ -38,7 +38,7 @@ Coflux设计了**结构化并发**的`task/fork`模型和“**任务即上下文
 #include <coflux/combiner.hpp>
 
 using noop = coflux::noop_executor;
-using pool = coflux::thread_pool_executor<1024>;
+using pool = coflux::thread_pool_executor<>;
 using sche = coflux::scheduler<noop, pool, coflux::timer_executor>;
 
 // Simulate asynchronous network request reading
