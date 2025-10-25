@@ -156,9 +156,6 @@ target_link_libraries(your_target PRIVATE coflux)
 4. 进一步完善基准测试和单元测试。
 5. 修复隐藏的bug和竞态条件。
 
-已知的问题：
-1. channel存在竞态条件。
-
 ## 贡献
 
 欢迎任何形式的贡献！无论是提交Bug报告、功能建议还是Pull Request。

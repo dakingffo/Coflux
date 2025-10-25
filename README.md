@@ -163,10 +163,6 @@ For the further development of this framework:
 4.  Further refinement of benchmarks and unit tests.
 5.  Fixing hidden bugs and race conditions.
 
-Known Issues:
-
-1.  The channel implementation has race conditions.
-
 ## Contribution
 
 Contributions in any form are welcome\! Whether it's submitting bug reports, feature suggestions, or Pull Requests.
