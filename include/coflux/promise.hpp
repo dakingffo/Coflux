@@ -134,9 +134,8 @@ namespace coflux {
 
 		template <bool Ownership>
 		struct promise_fork_base {
-			using handle_type = std::coroutine_handle<promise_fork_base<false>>;
-			using final_callback_type = std::function<void()>;
-			using brother_handle = std::conditional_t<Ownership, std::monostate, handle_type>;
+			using handle_type		        = std::coroutine_handle<promise_fork_base<false>>;
+			using brother_handle            = std::conditional_t<Ownership, std::monostate, handle_type>;
 			using cancellaton_callback_type = std::optional<std::stop_callback<std::function<void()>>>;
 
 			promise_fork_base() {
@@ -212,10 +211,10 @@ namespace coflux {
 
 		template <typename Ty, bool Ownership>
 		struct promise_result_base : public promise_fork_base<Ownership> {
-			using fork_base = promise_fork_base<Ownership>;
-			using result_proxy = result<Ty>;
-			using value_type = typename result_proxy::value_type;
-			using result_type = Ty;
+			using fork_base     = promise_fork_base<Ownership>;
+			using result_proxy  = result<Ty>;
+			using value_type    = typename result_proxy::value_type;
+			using result_type   = Ty;
 			using callback_type = std::function<void(const result_proxy&)>;
 
 			promise_result_base() {}
@@ -325,10 +324,10 @@ namespace coflux {
 
 		template <bool Ownership>
 		struct promise_result_base<void, Ownership> : public promise_fork_base<Ownership> {
-			using fork_base = promise_fork_base<Ownership>;
-			using result_proxy = result<void>;
-			using value_type = typename result_proxy::value_type;
-			using result_type = std::monostate;
+			using fork_base     = promise_fork_base<Ownership>;
+			using result_proxy  = result<void>;
+			using value_type    = typename result_proxy::value_type;
+			using result_type   = std::monostate;
 			using callback_type = std::function<void(const result_proxy&)>;
 
 			promise_result_base() {}
@@ -470,11 +469,11 @@ namespace coflux {
 		template <typename Ty, simple_awaitable Initial, simple_awaitable Final, bool Ownership>
 		struct promise_base<Ty, Initial, Final, true, Ownership>
 			: public promise_result_base<Ty, Ownership> {
-			using result_base = promise_result_base<Ty, Ownership>;
-			using fork_base = typename result_base::fork_base;
-			using value_type = typename result_base::value_type;
+			using result_base  = promise_result_base<Ty, Ownership>;
+			using fork_base    = typename result_base::fork_base;
+			using value_type   = typename result_base::value_type;
 			using result_proxy = typename result_base::result_proxy;
-			using result_type = typename result_base::result_type;
+			using result_type  = typename result_base::result_type;
 
 			promise_base() = default;
 			~promise_base() = default;
@@ -485,8 +484,8 @@ namespace coflux {
 
 		template <typename Ty, simple_awaitable Initial, simple_awaitable Final>
 		struct promise_base<Ty, Initial, Final, false, false> : public promise_yield_base<Ty> {
-			using yield_base = promise_yield_base<Ty>;
-			using value_type = typename yield_base::value_type;
+			using yield_base  = promise_yield_base<Ty>;
+			using value_type  = typename yield_base::value_type;
 			using yield_proxy = typename yield_base::yield_proxy;
 
 			Initial initial_suspend() const noexcept { return {}; }
@@ -501,17 +500,17 @@ namespace coflux {
 		simple_awaitable Initial, simple_awaitable Final, bool Ownership>
 	struct promise<detail::basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>> final
 		: public detail::promise_base<Ty, Initial, Final, true, Ownership> {
-		using base = detail::promise_base<Ty, Initial, Final, true, Ownership>;
-		using result_base = typename base::result_base;
-		using fork_base = typename base::fork_base;
-		using value_type = typename base::value_type;
-		using result_proxy = typename base::result_proxy;
-		using result_type = typename base::result_type;
-		using task_type = detail::basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>;
-		using executor_traits = coflux::executor_traits<Executor>;
-		using executor_type = typename executor_traits::executor_type;
+		using base             = detail::promise_base<Ty, Initial, Final, true, Ownership>;
+		using result_base	   = typename base::result_base;
+		using fork_base		   = typename base::fork_base;
+		using value_type	   = typename base::value_type;
+		using result_proxy	   = typename base::result_proxy;
+		using result_type	   = typename base::result_type;
+		using task_type        = detail::basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>;
+		using executor_traits  = coflux::executor_traits<Executor>;
+		using executor_type    = typename executor_traits::executor_type;
 		using executor_pointer = typename executor_traits::executor_pointer;
-		using scheduler_type = Scheduler;
+		using scheduler_type   = Scheduler;
 
 		template <typename ...Args>
 			requires Ownership
@@ -730,9 +729,9 @@ namespace coflux {
 	template <typename Ty>
 	struct promise<generator<Ty>> final
 		: public detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false> {
-		using base = detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false>;
-		using value_type = typename base::value_type;
-		using yield_proxy = typename base::yield_proxy;
+		using base			 = detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false>;
+		using value_type     = typename base::value_type;
+		using yield_proxy    = typename base::yield_proxy;
 		using generator_type = generator<Ty>;
 
 		promise() noexcept {

@@ -58,7 +58,7 @@ namespace coflux {
                     stop.request_stop();
                     std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
                     if (handle_to_resume) {
-                        handle_to_resume.resume();
+                        executor_traits::execute(exec, handle_to_resume);
                     }
                 }
             };
@@ -78,7 +78,7 @@ namespace coflux {
                     stop.request_stop();
                     std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
                     if (handle_to_resume) {
-                        handle_to_resume.resume();
+                        executor_traits::execute(exec, handle_to_resume);
                     }
                 }
             };
@@ -193,7 +193,7 @@ namespace coflux {
                 if (result->first.fetch_sub(1, std::memory_order_acq_rel) == 1) {
                     std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
                     if (handle_to_resume) {
-                        executor_traits::execute(exec, [handle_to_resume]() { handle_to_resume.resume(); });
+                        executor_traits::execute(exec, handle_to_resume);
                     }
                 }
             };
@@ -215,7 +215,7 @@ namespace coflux {
                 if (result->first.fetch_sub(1, std::memory_order_acq_rel) == 1) {
                     std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
                     if (handle_to_resume) {
-                        executor_traits::execute(exec, [handle_to_resume]() { handle_to_resume.resume(); });
+                        executor_traits::execute(exec, handle_to_resume);
                     }
                 }
             };
@@ -342,7 +342,7 @@ namespace coflux {
                     if (try_resume_from_this) {
                         std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
                         if (handle_to_resume) {
-                            executor_traits::execute(exec, [handle_to_resume]() { handle_to_resume.resume(); });
+                            executor_traits::execute(exec, handle_to_resume);
                         }
                     }
                 }
@@ -371,7 +371,7 @@ namespace coflux {
                 if (try_resume_from_this) {
                     std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
                     if (handle_to_resume) {
-                        handle_to_resume.resume();
+                        executor_traits::execute(exec, handle_to_resume);
                     }
                 }
             };

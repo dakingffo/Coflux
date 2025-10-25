@@ -129,9 +129,17 @@ namespace coflux {
 #define COFLUX_EXECUTIVE_CONCEPTS
 
 	template <typename Executor>
-	concept executive = requires(Executor executor) {
+	concept executive_handle = requires(Executor executor) {
+		executor.execute(std::coroutine_handle<>());
+	};
+
+	template <typename Executor>
+	concept executive_function = requires(Executor executor) {
 		executor.execute(std::declval<void()>());
 	};
+
+	template <typename Executor>
+	concept executive = executive_handle<Executor> || executive_function<Executor>;
 
 	template <executive Executor, std::size_t N>
 	struct index : std::integral_constant<std::size_t, N> {

@@ -10,6 +10,10 @@
 namespace coflux {
 	class noop_executor {
 	public:
+		void execute(std::coroutine_handle<> handle) {
+			handle.resume();
+		}
+
 		template <typename Func, typename... Args>
 		void execute(Func&& func, Args&&... args) {
 			func(std::forward<Args>(args)...);
@@ -18,6 +22,10 @@ namespace coflux {
 
 	class new_thread_executor {
 	public:
+		void execute(std::coroutine_handle<> handle) {
+			execute([handle]() { handle.resume(); });
+		}
+
 		template <typename Func, typename... Args>
 		void execute(Func&& func, Args&&...args) {
 			std::thread(std::forward<Func>(func), std::forward<Args>(args)...).detach();
@@ -26,6 +34,10 @@ namespace coflux {
 
 	class async_executor {
 	public:
+		void execute(std::coroutine_handle<> handle) {
+			execute([handle]() { handle.resume(); });
+		}
+
 		template <typename Func, typename... Args>
 		auto execute(Func&& func, Args&&...args) {
 			return std::async(std::launch::async, std::forward<Func>(func), std::forward<Args>(args)...);
@@ -55,6 +67,10 @@ namespace coflux {
 		thread_pool_executor(thread_pool_executor&&)				    = default;
 		thread_pool_executor& operator=(const thread_pool_executor&)    = delete;
 		thread_pool_executor& operator=(thread_pool_executor&& another) = default;
+
+		void execute(std::coroutine_handle<> handle) {
+			execute([handle]() { handle.resume(); });
+		}
 
 		template <typename Func, typename... Args>
 		auto execute(Func&& func, Args&&...args) {
@@ -87,32 +103,43 @@ namespace coflux {
 		timer_executor& operator=(timer_executor&&) = default;
 
 		template <typename Func, typename... Args>
-		auto execute(Func&& func, const duration& timer = duration(), Args&&...args) {
-			return thread_->submit(std::forward<Func>(func), timer, std::forward<Args>(args)...);
+		void execute(Func&& func, const duration& timer = duration(), Args&&...args) {
+			thread_->submit(std::forward<Func>(func), timer, std::forward<Args>(args)...);
 		}
 
 	private:
 		std::unique_ptr<timer_thread> thread_;
 	};
 
-	template <typename Executor>
-	struct executor_traits;
+	template <executive_or_certain_executor Executor>
+	struct executor_type_traits;
 
 	template <executive Executor>
-	struct executor_traits<Executor> {
+	struct executor_type_traits<Executor> {
 		using executor_type    = Executor;
 		using executor_pointer = Executor*;
-
-		template <typename Func, typename...Args>
-		static void execute(executor_pointer exec, Func&& func, Args&&...args) {
-			exec->execute(std::forward<Func>(func), std::forward<Args>(args)...);
-		}
 	};
 
 	template <certain_executor Idx>
-	struct executor_traits<Idx> {
+	struct executor_type_traits<Idx> {
 		using executor_type    = typename Idx::type;
 		using executor_pointer = typename Idx::type*;
+	};
+
+	template <executive_or_certain_executor Executor>
+	struct executor_traits : executor_type_traits<Executor> {
+		using type_traits      = executor_type_traits<Executor>;
+		using executor_type    = typename type_traits::executor_type;
+		using executor_pointer = typename type_traits::executor_pointer;
+
+		static void execute(executor_pointer exec, std::coroutine_handle<> handle) {
+			if constexpr (executive_handle<executor_type>) {
+				exec->execute(handle);
+			}
+			else {
+				exec->execute([handle]() { handle.resume(); });
+			}
+		}
 
 		template <typename Func, typename...Args>
 		static void execute(executor_pointer exec, Func&& func, Args&&...args) {

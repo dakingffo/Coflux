@@ -223,9 +223,7 @@ namespace coflux {
             }
             std::atomic_signal_fence(std::memory_order_acquire);
             task_.then([exec = executor_, handle]() {
-                executor_traits::execute(exec, [handle]() {
-                    handle.resume();
-                    });
+                executor_traits::execute(exec, handle);
                 });
             maysuspend_awaiter_base::await_resume();
             return true;

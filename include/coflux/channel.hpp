@@ -123,7 +123,7 @@ namespace coflux {
 
 			void resume(bool flag) {
 				this->success_flag_ = flag;
-				executor_traits::execute(executor_, [&handle = this->handle_]() { handle.resume(); });
+				executor_traits::execute(executor_, this->handle_);
 			}
 
 			executor_pointer executor_;
@@ -189,7 +189,7 @@ namespace coflux {
 
 			void resume(bool flag) {
 				this->success_flag_ = flag;
-				executor_traits::execute(executor_, [&handle = this->handle_]() { handle.resume(); });
+				executor_traits::execute(executor_, this->handle_);
 			}
 
 			executor_pointer executor_;

@@ -114,9 +114,7 @@ namespace coflux {
                     Suspend::await_suspend(std::noop_coroutine());
                 }
                 if constexpr (!await_ready_false<Suspend>) {
-                    executor_traits::execute(executor_, [handle]() {
-                        handle.resume();
-                        });
+                    executor_traits::execute(executor_, handle);
                 }
             }
 
@@ -153,7 +151,7 @@ namespace coflux {
             void await_suspend(std::coroutine_handle<Promise> handle) noexcept {
                 maysuspend_awaiter_base::await_suspend();
                 coflux::executor_traits<timer_executor>::execute(&handle.promise().scheduler_.template get<timer_executor>(),
-                    [handle, this]() { executor_traits::execute(executor_, [handle]() { handle.resume(); }); },
+                    [handle, this]() { executor_traits::execute(executor_, handle); },
                     timer_);
             }
 
