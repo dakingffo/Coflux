@@ -71,11 +71,8 @@ namespace coflux {
 			using channel_ptr = Channel*;
 
 			channel_writer(channel_ptr channel, const value_type& value)
-				: success_flag_(false), channel_(channel), value_(value) {
-			}
-			~channel_writer() {
-				channel_->erase_writer(reinterpret_cast<void*>(this));
-			}
+				: success_flag_(false), channel_(channel), value_(value) {}
+			~channel_writer() = default;
 
 			const value_type& what() const noexcept {
 				return value_;
@@ -83,7 +80,7 @@ namespace coflux {
 
 			bool					success_flag_;
 			channel_ptr				channel_;
-			const value_type& value_;
+			const value_type&		value_;
 			std::coroutine_handle<> handle_;
 		};
 
@@ -97,8 +94,7 @@ namespace coflux {
 			using executor_pointer = typename executor_traits::executor_pointer;
 
 			channel_write_awaiter(channel_ptr channel, const value_type& value, executor_pointer exec, std::atomic<status>* p)
-				: base(channel, value), executor_(exec), maysuspend_awaiter_base{ p } {
-			}
+				: base(channel, value), executor_(exec), maysuspend_awaiter_base{ p } {}
 			~channel_write_awaiter() = default;
 
 			channel_write_awaiter(const channel_write_awaiter&)			   = delete;
@@ -136,11 +132,8 @@ namespace coflux {
 			using channel_ptr = Channel*;
 
 			channel_reader(channel_ptr channel, value_type& value)
-				: success_flag_(false), channel_(channel), value_(value) {
-			}
-			~channel_reader() {
-				channel_->erase_reader(reinterpret_cast<void*>(this));
-			}
+				: success_flag_(false), channel_(channel), value_(value) {}
+			~channel_reader() = default;
 
 			template <typename Ref>
 			void read(Ref&& value) {
@@ -163,8 +156,7 @@ namespace coflux {
 			using executor_pointer = typename executor_traits::executor_pointer;
 
 			channel_read_awaiter(channel_ptr channel, value_type& value, executor_pointer exec, std::atomic<status>* p)
-				: base(channel, value), executor_(exec), maysuspend_awaiter_base{ p } {
-			}
+				: base(channel, value), executor_(exec), maysuspend_awaiter_base{ p } {}
 			~channel_read_awaiter() = default;
 
 			channel_read_awaiter(const channel_read_awaiter&)		     = delete;
@@ -293,28 +285,6 @@ namespace coflux {
 			}
 			else {
 				readers_.emplace_back(std::move(reader_proxy));
-			}
-		}
-
-		void erase_writer(void* ptr) {
-			if (!active()) {
-				return;
-			}
-			std::lock_guard<std::mutex> guard(mtx_);
-			auto it = std::find(writers_.begin(), writers_.end(), ptr);
-			if (it != writers_.end()) {
-				writers_.erase(it);
-			}
-		}
-
-		void erase_reader(void* ptr) {
-			if (!active()) {
-				return;
-			}
-			std::lock_guard<std::mutex> guard(mtx_);
-			auto it = std::find(readers_.begin(), readers_.end(), ptr);
-			if (it != readers_.end()) {
-				readers_.erase(it);
 			}
 		}
 

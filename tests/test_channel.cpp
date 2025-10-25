@@ -1,4 +1,3 @@
-// fixing race condition...
 #include <gtest/gtest.h>
 #include <coflux/task.hpp>
 #include <coflux/channel.hpp>
