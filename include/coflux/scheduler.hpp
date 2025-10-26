@@ -8,10 +8,12 @@
 #include "executor.hpp"
 
 namespace coflux {
-	struct vtable {
-		void* (*get_arg_by_index)(void* instance_, std::size_t index);
-		void* (*get_arg_by_typeid)(void* instance_, std::type_index info);
-	};
+	namespace detail {
+		struct vtable {
+			void* (*get_arg_by_index)(void* instance_, std::size_t index);
+			void* (*get_arg_by_typeid)(void* instance_, std::type_index info);
+		};
+	}
 
 	template <typename...Executors>
 	class scheduler;
@@ -28,6 +30,7 @@ namespace coflux {
 			};
 			return find(std::make_index_sequence<sizeof...(Executors)>{});
 		}
+
 		static void* get_arg_by_typeid(void* tuple_ptr, std::type_index index) {
 			auto find = [tuple_ptr, index]<std::size_t...Is>(std::index_sequence<Is...>) -> void* {
 				auto& tuple = *static_cast<std::tuple<Executors...>*>(tuple_ptr);
@@ -39,7 +42,7 @@ namespace coflux {
 			return find(std::make_index_sequence<sizeof...(Executors)>{});
 		}
 
-		static constexpr vtable vtb_ = {
+		static constexpr detail::vtable vtb_ = {
 			.get_arg_by_index  = &get_arg_by_index,
 			.get_arg_by_typeid = &get_arg_by_typeid
 		};
@@ -52,24 +55,40 @@ namespace coflux {
 		template <typename ...Args>
 			requires (std::constructible_from<Executors, Args>&&...)
 		scheduler(Args&&... args)
-			: tp_(std::make_shared<std::tuple<Executors...>>(std::forward<Args>(args)...)) {}
-		scheduler()
-			: tp_(std::make_shared<std::tuple<Executors...>>()) {}
+			: tp_(std::forward<Args>(args)...) {}
+
+		template <schedulable Scheduler>
+			requires (!std::same_as<Scheduler, scheduler<Executors...>>)
+		scheduler(Scheduler& another)
+			: scheduler(another.template get<Executors>()...) {}
+
+		scheduler()  = default;
 		~scheduler() = default;
 
 		template <certain_executor Idx>
 		auto& get() {
-			return std::get<Idx::value>(*tp_);
+			return std::get<Idx::value>(tp_);
 		}
 
 		template <executive Executor>
 		auto& get() {
-			return std::get<Executor>(*tp_);
+			return std::get<Executor>(tp_);
+		}
+
+		template <executive_or_certain_executor...Executors>
+		auto to() {
+			return scheduler(get<Executors>()...);
+		}
+
+		template <schedulable Scheduler>
+		auto to() {
+			return Scheduler(*this);
 		}
 
 	private:
 		friend class scheduler<void>;
-		std::shared_ptr<std::tuple<Executors...>> tp_;  //shared_ptr to tuple
+
+		std::tuple<Executors...> tp_;  
 	};
 
 	template <>
@@ -77,11 +96,9 @@ namespace coflux {
 	public:
 		template <executive...Executors>
 		scheduler(scheduler<Executors...>& sch)
-			: scheduler_instance_(&*(sch.tp_)), vptr_(&sch.vtb_) {
-		}
+			: scheduler_instance_(&sch.tp_), vptr_(&sch.vtb_) {}
 		scheduler()
-			: scheduler_instance_(nullptr), vptr_(nullptr) {
-		}
+			: scheduler_instance_(nullptr), vptr_(nullptr) {}
 		~scheduler() = default;
 
 		scheduler(const scheduler&)			   = default;
@@ -98,7 +115,7 @@ namespace coflux {
 			return *p;
 		}
 
-		template <typename Executor>
+		template <executive Executor>
 		auto& get() {
 			auto p = static_cast<Executor*>(vptr_->get_arg_by_typeid(scheduler_instance_, typeid(Executor)));
 			if (!p) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
@@ -107,13 +124,23 @@ namespace coflux {
 			return *p;
 		}
 
+		template <executive_or_certain_executor...Executors>
+		auto to() {
+			return scheduler(get<Executors>()...);
+		}
+
+		template <schedulable Scheduler>
+		auto to() {
+			return Scheduler(*this);
+		}
+
 	private:
 		COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void Null_ptr_error() {
 			throw std::runtime_error("This scheduler can't find the executor required.");
 		}
 
 		void* scheduler_instance_;  // pointer to tuple
-		const vtable* vptr_;
+		const detail::vtable* vptr_;
 	};
 
 	template <executive...Executors>

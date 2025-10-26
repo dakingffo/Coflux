@@ -204,7 +204,7 @@ When a `task`/`fork` is created, it automatically mounts itself onto the corresp
 exec_.execute([my_handle]() { my_handle.resume(); });
 ```
 
-#### make\_fork
+#### make_fork
 
 Coflux designs the `make_fork` factory function, which can package any synchronous work into a `fork` for heterogeneous execution.
 
@@ -235,26 +235,24 @@ The return types of these two functions are different.
 
 ```C++
 	template <schedulable Scheduler>
-	auto make_environment(std::pmr::memory_resource* memo, Scheduler&& sch) {
-		return environment(memo, std::forward<Scheduler>(sch));
-	}
+	auto make_environment(std::pmr::memory_resource* memo, const Scheduler& sch);
 
 	template <schedulable Scheduler>
-	auto make_environment(Scheduler&& sch) {
-		return environment(std::pmr::get_default_resource(), std::forward<Scheduler>(sch));
-	}
+	auto make_environment(const Scheduler& sch);
+
+	template <schedulable Scheduler>
+	auto make_environment(std::pmr::memory_resource* memo, Scheduler&& sch);
+
+	template <schedulable Scheduler>
+	auto make_environment(Scheduler&& sch);
 
 	template <schedulable Scheduler, executive...Executors>
-	auto make_environment(std::pmr::memory_resource* memo, Executors&&...execs) {
-		return environment(memo, Scheduler{std::forward<Executors>(execs)...});
-	}
+	auto make_environment(std::pmr::memory_resource* memo, Executors&&...execs);
 
 	template <schedulable Scheduler, executive...Executors>
-	auto make_environment(Executors&&...execs) {
-		return environment(std::pmr::get_default_resource(), Scheduler{ std::forward<Executors>(execs)... });
-	}
+	auto make_environment(Executors&&...execs);
 ```
-Each `task` copies this information locally to guarantee a complete execution context (the scheduler uses `shared_ptr` internally).
+Each `task` copies this information locally to guarantee a complete execution context.
 This means the environment parameter can be shared by multiple tasks.
 
 `co_await coflux::this_task/this_fork::environment()`

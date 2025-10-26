@@ -10,6 +10,14 @@
 namespace coflux {
 	class noop_executor {
 	public:
+		noop_executor() = default;
+		~noop_executor() = default;
+
+		noop_executor(const noop_executor&)				  = default;
+		noop_executor(noop_executor&&)					  = default;
+		noop_executor& operator=(const noop_executor&)    = default;
+		noop_executor& operator=(noop_executor&& another) = default;
+
 		void execute(std::coroutine_handle<> handle) {
 			handle.resume();
 		}
@@ -22,6 +30,14 @@ namespace coflux {
 
 	class new_thread_executor {
 	public:
+		new_thread_executor()  = default;
+		~new_thread_executor() = default;
+
+		new_thread_executor(const new_thread_executor&)				  = default;
+		new_thread_executor(new_thread_executor&&)					  = default;
+		new_thread_executor& operator=(const new_thread_executor&)    = default;
+		new_thread_executor& operator=(new_thread_executor&& another) = default;
+
 		void execute(std::coroutine_handle<> handle) {
 			execute([handle]() { handle.resume(); });
 		}
@@ -34,6 +50,14 @@ namespace coflux {
 
 	class async_executor {
 	public:
+		async_executor()  = default;
+		~async_executor() = default;
+
+		async_executor(const async_executor&)               = default;
+		async_executor(async_executor&&)                    = default;
+		async_executor& operator=(const async_executor&)    = default;
+		async_executor& operator=(async_executor&& another) = default;
+
 		void execute(std::coroutine_handle<> handle) {
 			execute([handle]() { handle.resume(); });
 		}
@@ -59,13 +83,13 @@ namespace coflux {
 			mode                  run_mode			    = mode::fixed,
 			std::size_t		      thread_size_threshold = std::thread::hardware_concurrency() * 2,
 			Args&&...			  args)
-			: pool_(std::make_unique<thread_pool>(
+			: pool_(std::make_shared<thread_pool>(
 				basic_thread_size, run_mode, thread_size_threshold, std::forward<Args>(args)...)) {}
 		~thread_pool_executor() = default;
 
-		thread_pool_executor(const thread_pool_executor&)				= delete;
+		thread_pool_executor(const thread_pool_executor&)				= default;
 		thread_pool_executor(thread_pool_executor&&)				    = default;
-		thread_pool_executor& operator=(const thread_pool_executor&)    = delete;
+		thread_pool_executor& operator=(const thread_pool_executor&)    = default;
 		thread_pool_executor& operator=(thread_pool_executor&& another) = default;
 
 		void execute(std::coroutine_handle<> handle) {
@@ -82,7 +106,7 @@ namespace coflux {
 		}
 
 	private:
-		std::unique_ptr<thread_pool> pool_;
+		std::shared_ptr<thread_pool> pool_;
 	};
 
 	class timer_executor {
@@ -94,13 +118,13 @@ namespace coflux {
 
 	public:
 		timer_executor()
-			: thread_(std::make_unique<timer_thread>()) {}
+			: thread_(std::make_shared<timer_thread>()) {}
 		~timer_executor() = default;
 
-		timer_executor(const timer_executor&) = delete;
-		timer_executor(timer_executor&&) = default;
-		timer_executor& operator=(const timer_executor&) = delete;
-		timer_executor& operator=(timer_executor&&) = default;
+		timer_executor(const timer_executor&)			 = default;
+		timer_executor(timer_executor&&)                 = default;
+		timer_executor& operator=(const timer_executor&) = default;
+		timer_executor& operator=(timer_executor&&)      = default;
 
 		template <typename Func, typename... Args>
 		void execute(Func&& func, const duration& timer = duration(), Args&&...args) {
@@ -108,7 +132,7 @@ namespace coflux {
 		}
 
 	private:
-		std::unique_ptr<timer_thread> thread_;
+		std::shared_ptr<timer_thread> thread_;
 	};
 
 	template <executive_or_certain_executor Executor>

@@ -219,27 +219,25 @@ environment协议串联了完整的结构化并发与异构执行系统：
 
 ```C++
 	template <schedulable Scheduler>
-	auto make_environment(std::pmr::memory_resource* memo, Scheduler&& sch) {
-		return environment(memo, std::forward<Scheduler>(sch));
-	}
+	auto make_environment(std::pmr::memory_resource* memo, const Scheduler& sch);
 
 	template <schedulable Scheduler>
-	auto make_environment(Scheduler&& sch) {
-		return environment(std::pmr::get_default_resource(), std::forward<Scheduler>(sch));
-	}
+	auto make_environment(const Scheduler& sch);
+
+	template <schedulable Scheduler>
+	auto make_environment(std::pmr::memory_resource* memo, Scheduler&& sch);
+
+	template <schedulable Scheduler>
+	auto make_environment(Scheduler&& sch);
 
 	template <schedulable Scheduler, executive...Executors>
-	auto make_environment(std::pmr::memory_resource* memo, Executors&&...execs) {
-		return environment(memo, Scheduler{std::forward<Executors>(execs)...});
-	}
+	auto make_environment(std::pmr::memory_resource* memo, Executors&&...execs);
 
 	template <schedulable Scheduler, executive...Executors>
-	auto make_environment(Executors&&...execs) {
-		return environment(std::pmr::get_default_resource(), Scheduler{ std::forward<Executors>(execs)... });
-	}
+	auto make_environment(Executors&&...execs);
 ```
 
-每个task都会将这两个信息拷贝到本地，以保证完整的执行上下文（scheduler内部使用shared_ptr）。
+每个task都会将这两个信息拷贝到本地，以保证完整的执行上下文。
 这意味这个参数可以被多个task共享。
 
 `co_await coflux::context()`

@@ -258,11 +258,13 @@ namespace coflux {
         template <bool Ownership>
         struct destroy_forks_awaiter;
 
+        struct get_memory_resource_awaiter;
+
         template <schedulable Scheduler>
         struct get_scheduler_awaiter;
 
         template <bool Ownership>
-        struct environment_awaiter;
+        struct context_awaiter;
 
         namespace debug {
             template <bool Ownership>

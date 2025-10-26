@@ -234,6 +234,31 @@ namespace coflux {
             void await_resume() const noexcept {}
         };
 
+        struct get_memory_resource_awaiter : public nonsuspend_awaiter_base {
+            get_memory_resource_awaiter()  = default;
+            ~get_memory_resource_awaiter() = default;
+
+            get_memory_resource_awaiter(const get_memory_resource_awaiter&)            = delete;
+            get_memory_resource_awaiter(get_memory_resource_awaiter&&)                 = default;
+            get_memory_resource_awaiter& operator=(const get_memory_resource_awaiter&) = delete;
+            get_memory_resource_awaiter& operator=(get_memory_resource_awaiter&&)      = default;
+
+            bool await_ready() const noexcept {
+                return false;
+            }
+
+            template <typename Promise>
+            bool await_suspend(std::coroutine_handle<Promise> handle) noexcept {
+				memo_ = handle.promise().memo_;
+                return false;
+            }
+
+            auto await_resume() const noexcept {
+                return memo_;
+            }
+
+            std::pmr::memory_resource* memo_ = nullptr;
+        };
 
         template <schedulable Scheduler = scheduler<void>>
         struct get_scheduler_awaiter : public nonsuspend_awaiter_base {
@@ -250,7 +275,7 @@ namespace coflux {
             }
 
             template <typename Promise>
-            bool await_suspend(std::coroutine_handle<Promise> handle) const noexcept {
+            bool await_suspend(std::coroutine_handle<Promise> handle) noexcept {
                 scheduler_ = &handle.promise().scheduler_;
                 return false;
             }
@@ -263,17 +288,17 @@ namespace coflux {
         };
 
         template <bool Ownership>
-        struct environment_awaiter : public nonsuspend_awaiter_base, ownership_tag<Ownership> {
-            environment_awaiter(promise_fork_base<Ownership>* p, std::pmr::memory_resource* m, scheduler<void> sch)
+        struct context_awaiter : public nonsuspend_awaiter_base, ownership_tag<Ownership> {
+            context_awaiter(promise_fork_base<Ownership>* p, std::pmr::memory_resource* m, scheduler<void> sch)
                 : parent_promise_(p)
                 , memo_(m)
                 , parent_scheduler_(sch) {}
-            ~environment_awaiter() = default;
+            ~context_awaiter() = default;
 
-            environment_awaiter(const environment_awaiter&)            = delete;
-            environment_awaiter(environment_awaiter&&)                 = default;
-            environment_awaiter& operator=(const environment_awaiter&) = delete;
-            environment_awaiter& operator=(environment_awaiter&&)      = default;
+            context_awaiter(const context_awaiter&)            = delete;
+            context_awaiter(context_awaiter&&)                 = default;
+            context_awaiter& operator=(const context_awaiter&) = delete;
+            context_awaiter& operator=(context_awaiter&&)      = default;
 
             bool await_ready() const noexcept {
                 return false;
@@ -448,6 +473,10 @@ namespace coflux {
                 return detail::debug::get_forks_counter_awaiter<false>{};
             }
         }
+    }
+
+    inline auto get_memory_resource() noexcept {
+        return detail::get_memory_resource_awaiter{};
     }
 
     inline auto get_scheduler() noexcept {

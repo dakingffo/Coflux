@@ -65,16 +65,21 @@ TEST(StructureTest, ExceptionPropagation) {
     EXPECT_THROW(catcher_task.get_result(), std::runtime_error);
 }
 
-coflux::fork<void, TestExecutor> recursion_fork(auto&&, auto&& env, std::atomic<int>& cnt);
+coflux::fork<void, TestExecutor> recursion_fork(auto&&, std::atomic<int>& cnt);
 coflux::task<void, TestExecutor, TestScheduler> recursion_task(auto&& env, std::atomic<int>& cnt);
-coflux::fork<void, TestExecutor> recursion_fork(auto&&, auto&& env, std::atomic<int>& cnt) {
+
+coflux::fork<void, TestExecutor> recursion_fork(auto&&, std::atomic<int>& cnt) {
+    std::pmr::memory_resource* memo = co_await coflux::get_memory_resource();
+	coflux::scheduler<void> sche = co_await coflux::get_scheduler();
+    auto test_sche = sche.to<TestScheduler>();
     if (++cnt < 5)
-        co_await recursion_task(env, cnt);
+        co_await recursion_task(coflux::make_environment(memo, test_sche), cnt);
     else
         co_return;
 }
+
 coflux::task<void, TestExecutor, TestScheduler> recursion_task(auto&& env, std::atomic<int>& cnt) {
-    co_await recursion_fork(co_await coflux::context(), env, cnt);
+    co_await recursion_fork(co_await coflux::context(), cnt);
 }
 
 TEST(StructureTest, TaskForkRecursion) {

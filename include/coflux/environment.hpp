@@ -9,7 +9,7 @@
 
 namespace coflux {
 	template <bool ParentOwnership>
-	struct environment_info {
+	struct environment_info { // context()
 		environment_info(detail::promise_fork_base<ParentOwnership>* p, std::pmr::memory_resource* m, scheduler<void> sch)
 			: parent_promise_(p)
 			, memo_(m)
@@ -25,7 +25,7 @@ namespace coflux {
 		environment_info& operator=(environment_info&&)      = delete;
 
 		template <bool Ownership>
-		friend struct detail::environment_awaiter;
+		friend struct detail::context_awaiter;
 
 		detail::promise_fork_base<ParentOwnership>* parent_promise_ = nullptr;
 		std::pmr::memory_resource*					memo_			= nullptr;
@@ -34,11 +34,14 @@ namespace coflux {
 
 	template <schedulable Scheduler>
 	struct environment {
-		using scheduler_type = std::remove_reference_t<Scheduler>;
+		using scheduler_type = Scheduler;
 
-		environment(std::pmr::memory_resource* memo, Scheduler&& sch)
+		environment(std::pmr::memory_resource* memo, const scheduler_type& sch)
 			: memo_(memo)
-			, scheduler_(std::forward<Scheduler>(sch)) {}
+			, scheduler_(sch) {}
+		environment(std::pmr::memory_resource* memo, scheduler_type&& sch)
+			: memo_(memo)
+			, scheduler_(std::move(sch)) {}
 		~environment() = default;
 
 		environment(const environment&)			   = default;
@@ -51,23 +54,33 @@ namespace coflux {
 	};
 
 	template <schedulable Scheduler>
+	auto make_environment(std::pmr::memory_resource* memo, const Scheduler& sch) {
+		return environment<Scheduler>(memo, sch);
+	}
+
+	template <schedulable Scheduler>
+	auto make_environment(const Scheduler& sch) {
+		return make_environment(std::pmr::get_default_resource(), sch);
+	}
+
+	template <schedulable Scheduler>
 	auto make_environment(std::pmr::memory_resource* memo, Scheduler&& sch) {
-		return environment(memo, std::forward<Scheduler>(sch));
+		return environment<Scheduler>(memo, std::move(sch));
 	}
 
 	template <schedulable Scheduler>
 	auto make_environment(Scheduler&& sch) {
-		return environment(std::pmr::get_default_resource(), std::forward<Scheduler>(sch));
+		return make_environment(std::pmr::get_default_resource(), std::forward<Scheduler>(sch));
 	}
 
 	template <schedulable Scheduler, executive...Executors>
 	auto make_environment(std::pmr::memory_resource* memo, Executors&&...execs) {
-		return environment(memo, Scheduler{std::forward<Executors>(execs)...});
+		return make_environment(memo, Scheduler{std::forward<Executors>(execs)...});
 	}
 
 	template <schedulable Scheduler, executive...Executors>
 	auto make_environment(Executors&&...execs) {
-		return environment(std::pmr::get_default_resource(), Scheduler{ std::forward<Executors>(execs)... });
+		return make_environment(std::pmr::get_default_resource(), Scheduler{ std::forward<Executors>(execs)... });
 	}
 }
 

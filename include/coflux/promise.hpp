@@ -23,28 +23,28 @@ namespace coflux {
 				}
 			}
 
-			result(const result&) = delete;
-			result(result&&) = delete;
+			result(const result&)		     = delete;
+			result(result&&)			     = delete;
 			result& operator=(const result&) = delete;
-			result& operator=(result&&) = delete;
+			result& operator=(result&&)      = delete;
 
 			template <typename Ref>
-			void emplace_value(Ref&& ref) {
+			void emplace_value(Ref&& ref) noexcept(std::is_nothrow_constructible_v<value_type, Ref>) {
 				new (std::addressof(value_)) value_type(std::forward<Ref>(ref));
 				st_.store(completed, std::memory_order_release);
 			}
 
-			void emplace_error(error_type&& err) {
+			void emplace_error(error_type&& err) noexcept {
 				new (std::addressof(error_)) error_type(std::move(err));
 				st_.store(failed, std::memory_order_release);
 			}
 
-			void emplace_cancel(cancel_exception&& err) {
+			void emplace_cancel(cancel_exception&& err) noexcept {
 				new (std::addressof(error_)) error_type(std::make_exception_ptr(std::move(err)));
 				st_.store(cancelled, std::memory_order_release);
 			}
 
-			std::atomic<status>& get_status() {
+			std::atomic<status>& get_status() noexcept {
 				return st_;
 			}
 
@@ -89,21 +89,21 @@ namespace coflux {
 			result& operator=(const result&) = delete;
 			result& operator=(result&&) = delete;
 
-			void emplace_void() {
+			void emplace_void() noexcept {
 				st_.store(completed, std::memory_order_release);
 			}
 
-			void emplace_error(error_type&& err) {
+			void emplace_error(error_type&& err) noexcept {
 				error_ = std::move(err);
 				st_.store(failed, std::memory_order_release);
 			}
 
-			void emplace_cancel(cancel_exception&& err) {
+			void emplace_cancel(cancel_exception&& err) noexcept {
 				error_ = std::make_exception_ptr(std::move(err));
 				st_.store(cancelled, std::memory_order_release);
 			}
 
-			std::atomic<status>& get_status() {
+			std::atomic<status>& get_status() noexcept {
 				return st_;
 			}
 
@@ -134,8 +134,8 @@ namespace coflux {
 
 		template <bool Ownership>
 		struct promise_fork_base {
-			using handle_type		        = std::coroutine_handle<promise_fork_base<false>>;
-			using brother_handle            = std::conditional_t<Ownership, std::monostate, handle_type>;
+			using handle_type = std::coroutine_handle<promise_fork_base<false>>;
+			using brother_handle = std::conditional_t<Ownership, std::monostate, handle_type>;
 			using cancellaton_callback_type = std::optional<std::stop_callback<std::function<void()>>>;
 
 			promise_fork_base() {
@@ -166,7 +166,7 @@ namespace coflux {
 				children_head_ = new_children;
 			}
 
-			void destroy_forks() {
+			void destroy_forks() noexcept {
 				handle_type next = nullptr;
 				handle_type fork = children_head_;
 				while (fork) {
@@ -182,21 +182,20 @@ namespace coflux {
 #endif
 			}
 
-			void final_semaphore_acquire() {
+			void final_semaphore_acquire() noexcept {
 				if (already_final_.load(std::memory_order_acquire) == false) {
 					sem_.acquire();
 				}
 			}
 
+			std::atomic_bool      already_final_ = false;
+			std::binary_semaphore sem_{ 0 };
 			std::stop_source      stop_source_;
 			handle_type           children_head_ = nullptr;
-			std::mutex	          mtx_;
 
 			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) brother_handle			  brothers_next_ {};
 
 			cancellaton_callback_type cancellation_callback_;
-			std::atomic_bool          already_final_ = false;
-			std::binary_semaphore     sem_{ 0 };
 
 #if COFLUX_DEBUG
 			std::size_t									   children_counter_ = 0;
@@ -217,19 +216,19 @@ namespace coflux {
 			using result_type   = Ty;
 			using callback_type = std::function<void(const result_proxy&)>;
 
-			promise_result_base() {}
+			promise_result_base() = default;
 			~promise_result_base() override = default;
 
-			void unhandled_exception() {
+			void unhandled_exception() noexcept {
 				result_.emplace_error(std::current_exception());
 			}
 
 			template <typename Ret>
-			void return_value(Ret&& value) {
+			void return_value(Ret&& value) noexcept(std::is_nothrow_constructible_v<value_type, Ret>) {
 				result_.emplace_value(std::forward<Ret>(value));
 			}
 
-			void cancel() {
+			void cancel() noexcept {
 				result_.emplace_cancel(cancel_exception(Ownership));
 				this->stop_source_.request_stop();
 			}
@@ -242,7 +241,7 @@ namespace coflux {
 				return std::move(result_).value();
 			}
 
-			std::atomic<status>& get_status() {
+			std::atomic<status>& get_status() noexcept {
 				return result_.get_status();
 			}
 
@@ -320,6 +319,7 @@ namespace coflux {
 
 			result_proxy			   result_;
 			std::vector<callback_type> callbacks_;
+			std::mutex	               mtx_;
 		};
 
 		template <bool Ownership>
@@ -330,18 +330,18 @@ namespace coflux {
 			using result_type   = std::monostate;
 			using callback_type = std::function<void(const result_proxy&)>;
 
-			promise_result_base() {}
-			~promise_result_base() = default;
+			promise_result_base() = default;
+			~promise_result_base() override = default;
 
-			void unhandled_exception() {
+			void unhandled_exception() noexcept {
 				result_.emplace_error(std::current_exception());
 			}
 
-			void return_void() {
+			void return_void() noexcept {
 				result_.emplace_void();
 			}
 
-			void cancel() {
+			void cancel() noexcept {
 				result_.emplace_cancel(cancel_exception(Ownership));
 				this->stop_source_.request_stop();
 			}
@@ -350,7 +350,7 @@ namespace coflux {
 				return result_.try_throw();
 			}
 
-			std::atomic<status>& get_status() {
+			std::atomic<status>& get_status() noexcept {
 				return result_.get_status();
 			}
 
@@ -428,6 +428,7 @@ namespace coflux {
 
 			result_proxy               result_;
 			std::vector<callback_type> callbacks_;
+			std::mutex	               mtx_;
 		};
 
 		template <typename Ty>
@@ -435,19 +436,19 @@ namespace coflux {
 			using value_type = Ty;
 			using yield_proxy = std::optional<Ty>;
 
-			void unhandled_exception() {
+			void unhandled_exception() noexcept {
 				error_ = std::current_exception();
 				status_ = failed;
 			}
 
-			template <typename ...Args>
-			std::suspend_always yield_value(Args&&...args) {
-				product_.emplace(std::forward<Args>(args)...);
+			template <typename Ref>
+			std::suspend_always yield_value(Ref&& value) noexcept(std::is_nothrow_constructible_v<value_type, Ref>) {
+				product_.emplace(std::forward<Ref>(value));
 				status_ = suspending;
 				return {};
 			}
 
-			void return_void() {
+			void return_void() noexcept {
 				status_ = completed;
 			}
 
@@ -475,11 +476,11 @@ namespace coflux {
 			using result_proxy = typename result_base::result_proxy;
 			using result_type  = typename result_base::result_type;
 
-			promise_base() = default;
+			promise_base()  = default;
 			~promise_base() = default;
 
-			Initial initial_suspend() const noexcept { return {}; }
-			Final   final_suspend()   const noexcept { return {}; }
+			constexpr Initial initial_suspend() const noexcept { return {}; }
+			constexpr Final   final_suspend()   const noexcept { return {}; }
 		};
 
 		template <typename Ty, simple_awaitable Initial, simple_awaitable Final>
@@ -488,8 +489,8 @@ namespace coflux {
 			using value_type  = typename yield_base::value_type;
 			using yield_proxy = typename yield_base::yield_proxy;
 
-			Initial initial_suspend() const noexcept { return {}; }
-			Final   final_suspend()   const noexcept { return {}; }
+			constexpr Initial initial_suspend() const noexcept { return {}; }
+			constexpr Final   final_suspend()   const noexcept { return {}; }
 		};
 }
 
@@ -501,11 +502,11 @@ namespace coflux {
 	struct promise<detail::basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>> final
 		: public detail::promise_base<Ty, Initial, Final, true, Ownership> {
 		using base             = detail::promise_base<Ty, Initial, Final, true, Ownership>;
-		using result_base	   = typename base::result_base;
-		using fork_base		   = typename base::fork_base;
-		using value_type	   = typename base::value_type;
-		using result_proxy	   = typename base::result_proxy;
-		using result_type	   = typename base::result_type;
+		using result_base      = typename base::result_base;
+		using fork_base        = typename base::fork_base;
+		using value_type       = typename base::value_type;
+		using result_proxy     = typename base::result_proxy;
+		using result_type      = typename base::result_type;
 		using task_type        = detail::basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>;
 		using executor_traits  = coflux::executor_traits<Executor>;
 		using executor_type    = typename executor_traits::executor_type;
@@ -537,7 +538,7 @@ namespace coflux {
 		promise(Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...args)
 			: promise(env, std::forward<Args>(args)...) {
 		}
-		~promise() = default;
+		~promise() override = default;
 
 
 		static void* allocate(std::pmr::memory_resource* memo, std::size_t size) {
@@ -621,12 +622,12 @@ namespace coflux {
 			return detail::dispatch_awaiter<Ownership, executor_type, Initial>(executor_);
 		}
 
-		task_type get_return_object() {
+		task_type get_return_object() noexcept {
 			return task_type(std::coroutine_handle<promise>::from_promise(*this));
 		}
 
 		auto await_transform(detail::context_t) noexcept {
-			return detail::environment_awaiter<Ownership>{this, memo_, scheduler_};
+			return detail::context_awaiter<Ownership>{this, memo_, scheduler_};
 		}
 
 		auto await_transform(detail::get_scheduler_awaiter<scheduler<void>>&& awaiter) noexcept {
@@ -635,85 +636,85 @@ namespace coflux {
 
 		template <awaitable Awaiter>
 			requires (!std::is_base_of_v<detail::limited_tag, std::remove_reference_t<Awaiter>>)
-		decltype(auto) await_transform(Awaiter&& awaiter) {
-			this->status_ = suspending;
+		decltype(auto) await_transform(Awaiter&& awaiter) noexcept {
+			this->get_status() = suspending;
 			return std::forward<Awaiter>(awaiter);
 		}
 
 		template <awaitable Awaiter>
 			requires std::is_base_of_v<detail::nonsuspend_awaiter_base, std::remove_reference_t<Awaiter>>
 		&& std::is_base_of_v<detail::ownership_tag<Ownership>, std::remove_reference_t<Awaiter>>
-			decltype(auto) await_transform(Awaiter&& awaiter) {
+			decltype(auto) await_transform(Awaiter&& awaiter) noexcept {
 			return std::forward<Awaiter>(awaiter);
 		}
 
 		template <awaitable Awaiter>
 			requires std::is_base_of_v<detail::maysuspend_awaiter_base, std::remove_reference_t<Awaiter>>
 		&& std::is_base_of_v<detail::ownership_tag<Ownership>, std::remove_reference_t<Awaiter>>
-			decltype(auto) await_transform(Awaiter&& awaiter) {
+			decltype(auto) await_transform(Awaiter&& awaiter) noexcept {
 			awaiter.set_waiter_status_ptr(&(this->get_status()));
 			return std::forward<Awaiter>(awaiter);
 		}
 
 		template <task_rvalue Task>
-		auto await_transform(Task&& co_task) {
+		auto await_transform(Task&& co_task) noexcept {
 			return awaiter<Task, executor_type>(std::move(co_task), executor_, &(this->get_status()));
 		}
 
 		template <fork_lrvalue Fork>
-		auto await_transform(Fork&& co_fork) {
+		auto await_transform(Fork&& co_fork) noexcept {
 			return awaiter<Fork, executor_type>(std::forward<Fork>(co_fork), executor_, &(this->get_status()));
 		}
 
 		template <fork_lrvalue ...Forks>
-		auto await_transform(detail::when_any_pair<Forks...>&& when_any) {
+		auto await_transform(detail::when_any_pair<Forks...>&& when_any) noexcept {
 			return awaiter<detail::when_any_pair<Forks...>, executor_type>(
 				std::move(when_any.second), executor_, &(this->get_status()));
 		}
 
 		template <task_like ...TaskLikes>
-		auto await_transform(detail::when_all_pair<TaskLikes...>&& when_all) {
+		auto await_transform(detail::when_all_pair<TaskLikes...>&& when_all) noexcept {
 			return awaiter<detail::when_all_pair<TaskLikes...>, executor_type>(
 				std::move(when_all.second), executor_, &(this->get_status()));
 		}
 
 		template <fork_range Range>
-		auto await_transform(detail::when_n_pair<Range>&& when_n) {
+		auto await_transform(detail::when_n_pair<Range>&& when_n) noexcept {
 			return awaiter<detail::when_n_pair<Range>, executor_type>(when_n.first.n_,
 				std::forward<Range>(when_n.second), executor_, &(this->get_status()));
 		}
 
 		template <typename Rep, typename Period>
-		auto await_transform(const std::chrono::duration<Rep, Period>& sleep_time) {
+		auto await_transform(const std::chrono::duration<Rep, Period>& sleep_time) noexcept {
 			return detail::sleep_awaiter<executor_type>(executor_,
 				std::chrono::duration_cast<std::chrono::milliseconds>(sleep_time), &(this->get_status()));
 		}
 
-		auto await_transform(detail::cancel_awaiter<Ownership>&& awaiter) {
+		auto await_transform(detail::cancel_awaiter<Ownership>&& awaiter) noexcept {
 			result_base::cancel();
 			return detail::callback_awaiter{};
 		}
 
 		template <typename T, std::size_t N>
-		auto await_transform(std::pair<channel<T[N]>*, const T&>&& write_pair) {
+		auto await_transform(std::pair<channel<T[N]>*, const T&>&& write_pair) noexcept {
 			return detail::channel_write_awaiter<channel<T[N]>, executor_type>(
 				write_pair.first, write_pair.second, executor_, &(this->get_status()));
 		}
 
 		template <typename T, std::size_t N>
-		auto await_transform(std::pair<channel<T[N]>*, T&>&& read_pair) {
+		auto await_transform(std::pair<channel<T[N]>*, T&>&& read_pair) noexcept {
 			return detail::channel_read_awaiter<channel<T[N]>, executor_type>(
 				read_pair.first, read_pair.second, executor_, &(this->get_status()));
 		}
 
 		template <typename T>
-		auto await_transform(std::pair<channel<T[]>*, const T&>&& write_pair) {
+		auto await_transform(std::pair<channel<T[]>*, const T&>&& write_pair) noexcept {
 			return detail::channel_write_awaiter<channel<T[]>, executor_type>(
 				write_pair.first, write_pair.second, executor_, &(this->get_status()));
 		}
 
 		template <typename T>
-		auto await_transform(std::pair<channel<T[]>*, T&>&& read_pair) {
+		auto await_transform(std::pair<channel<T[]>*, T&>&& read_pair) noexcept {
 			return detail::channel_read_awaiter<channel<T[]>, executor_type>(
 				read_pair.first, read_pair.second, executor_, &(this->get_status()));
 		}
@@ -729,9 +730,9 @@ namespace coflux {
 	template <typename Ty>
 	struct promise<generator<Ty>> final
 		: public detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false> {
-		using base			 = detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false>;
-		using value_type     = typename base::value_type;
-		using yield_proxy    = typename base::yield_proxy;
+		using base = detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false>;
+		using value_type = typename base::value_type;
+		using yield_proxy = typename base::yield_proxy;
 		using generator_type = generator<Ty>;
 
 		promise() noexcept {
@@ -739,7 +740,7 @@ namespace coflux {
 			ptr_.active = this;
 		}
 
-		generator_type get_return_object() {
+		generator_type get_return_object() noexcept {
 			return generator_type(std::coroutine_handle<promise>::from_promise(*this));
 		}
 
