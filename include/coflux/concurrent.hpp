@@ -6,9 +6,10 @@
 #define COFLUX_CONCURRENT_HPP
 
 #include "forward_declaration.hpp"
+#include "moodycamel/blockingconcurrentqueue.h"
 
 namespace coflux {
-	template <typename Container = std::deque<std::function<void()>>>
+	template <typename Container = std::deque<std::coroutine_handle<>>>
 	class unbounded_queue {
 	public:
 		using container_type  = Container;
@@ -172,11 +173,11 @@ namespace coflux {
 		fixed, cached
 	};
 
-	template <typename Container>
-	class thread_pool<unbounded_queue<Container>> {
+	template <>
+	class thread_pool<moodycamel::BlockingConcurrentQueue<std::coroutine_handle<>>> {
 	public:
-		using queue_type     = unbounded_queue<Container>;
-		using allocator_type = typename queue_type::allocator_type;
+		using queue_type     = moodycamel::BlockingConcurrentQueue<std::coroutine_handle<>>;
+		using allocator_type = std::allocator<std::coroutine_handle<>>;
 
 	public:
 		template <typename...Args>
@@ -222,7 +223,9 @@ namespace coflux {
 		void shut_down() {
 			bool expected = true;
 			if (running_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
-				task_queue_.not_empty_cv().notify_all();
+				for (std::size_t i = 0; i < thread_size_threshold_; i++) {
+					task_queue_.enqueue(std::noop_coroutine());
+				}
 				for (std::thread& t : thread_list_) {
 					if (t.joinable()) {
 						t.join();
@@ -236,26 +239,16 @@ namespace coflux {
 			}
 		}
 
-		template <typename Func>
-		auto submit(Func&& func) {
+		auto submit(std::coroutine_handle<> handle) {
 			if (!running_.load(std::memory_order_acquire)) {
 				Submit_error();
 			}
-			return [&](auto&&...args) -> std::future<decltype(func(args...))> {
-				auto result_ptr = std::make_shared<std::packaged_task<decltype(func(args...))()>>(
-					std::bind(std::forward<Func>(func), std::forward<decltype(args)>(args)...)
-				);
-				task_queue_.emplace(
-					[result_ptr]() -> void {
-						(*result_ptr)();
-					});
-				if (mode_ == mode::cached) {
-					if (task_queue_.size() > thread_size_ * thread_size_ && thread_size_ < thread_size_threshold_) {
-						Add_thread();
-					}
+			task_queue_.enqueue(handle);
+			if (mode_ == mode::cached) {
+				if (task_queue_.size_approx() > 128 * thread_size_ && thread_size_ < thread_size_threshold_) {
+					Add_thread();
 				}
-				return result_ptr->get_future();
-				};
+			}
 		}
 
 		bool set_basic_thread_size(std::size_t count) {
@@ -288,24 +281,204 @@ namespace coflux {
 
 	private:
 		void Get_task() {
-			std::function<void()> task;
-			auto last_time = std::chrono::high_resolution_clock().now();
-			for (;; last_time = std::chrono::high_resolution_clock().now()) {
-				task = std::function<void()>();
-				while (!task) {
+			std::coroutine_handle<> handle = std::noop_coroutine();
+			while(true) {
+				handle = std::noop_coroutine();
+				while (handle == std::noop_coroutine()) {
 					if (!running_.load(std::memory_order_acquire)) {
 						return;
 					}
 					switch (mode_) {
 					case mode::fixed: {
-						std::optional<std::function<void()>> poll_result = task_queue_.poll(running_);
+						task_queue_.wait_dequeue(handle);
+						break;
+					}
+					case mode::cached: {
+						if (!task_queue_.wait_dequeue_timed(handle, max_thread_idle_time_)) {
+							Finish_this();
+							return;
+						}
+						break;
+					}
+					}
+				}
+				if (handle != std::noop_coroutine()) {
+					running_thread_count_++;
+					handle.resume();
+					running_thread_count_--;
+				}
+			}
+		}
+
+		void Finish_this() {
+			std::lock_guard<std::mutex> guard(mtx_);
+			std::thread::id this_id = std::this_thread::get_id();
+			for (int i = 0; i < thread_size_threshold_; i++) {
+				if (thread_list_[i].get_id() == this_id) {
+					thread_working_[i] = false;
+					thread_size_--;
+					return;
+				}
+			}
+		}
+
+		void Add_thread() {
+			std::lock_guard<std::mutex> guard(mtx_);
+			for (int i = 0; i < thread_size_threshold_; i++) {
+				if (thread_working_[i] == false) {
+					if (thread_list_[i].joinable()) {
+						thread_list_[i].join();
+					}
+					thread_list_[i] = std::thread(std::bind(&thread_pool::Get_task, this));
+					thread_working_[i] = true;
+					thread_size_++;
+					return;
+				}
+			}
+		}
+
+		COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void Submit_error() {
+			throw std::runtime_error("Thread_pool can't take on a new task.");
+		}
+
+	private:
+		mode							      mode_;
+		std::atomic_bool					  running_ = false;
+		std::vector<std::thread>			  thread_list_;
+		std::vector<char>                     thread_working_;
+		queue_type							  task_queue_;
+		std::size_t							  basic_thread_size_;
+		std::size_t							  thread_size_threshold_;
+		std::atomic<std::size_t>			  thread_size_ = 0;
+		std::atomic<std::size_t>			  running_thread_count_ = 0;
+		std::mutex                            mtx_;
+		static constexpr std::chrono::seconds max_thread_idle_time_ = std::chrono::seconds(60);
+	};
+
+	template <typename Container>
+	class thread_pool<unbounded_queue<Container>> {
+	public:
+		using queue_type     = unbounded_queue<Container>;
+		using allocator_type = typename queue_type::allocator_type;
+
+	public:
+		template <typename...Args>
+		explicit thread_pool(
+			std::size_t      basic_thread_size     = std::thread::hardware_concurrency(),		//set basic thread size
+			mode             run_mode			   = mode::fixed,								//set mode
+			std::size_t      thread_size_threshold = std::thread::hardware_concurrency() * 2,	//set thread size threshold(when cached)
+			Args&&...        args)																//arguments for task queue						
+			: basic_thread_size_(basic_thread_size)
+			, mode_(run_mode)
+			, thread_size_threshold_(thread_size_threshold)
+			, task_queue_(std::forward<Args>(args)...) {
+			run();
+		}
+		~thread_pool() {
+			shut_down();
+		};
+
+		thread_pool(const thread_pool&)			   = delete;
+		thread_pool(thread_pool&&)				   = delete;
+		thread_pool& operator=(const thread_pool&) = delete;
+		thread_pool& operator=(thread_pool&&)      = delete;
+
+		void run() {
+			if (running_) {
+				return;
+			}
+			std::lock_guard<std::mutex> guard(mtx_);
+			running_ = true;
+			for (int i = 0; i < basic_thread_size_; i++) {
+				thread_list_.emplace_back(std::thread(std::bind(&thread_pool::Get_task, this)));
+				thread_size_++;
+			}
+			if (mode_ == mode::cached) {
+				thread_working_.resize(thread_size_threshold_, true);
+				for (int i = int(basic_thread_size_); i < thread_size_threshold_; i++) {
+					thread_working_[i] = false;
+					thread_list_.emplace_back(std::thread{});
+				}
+			}
+		}
+
+		void shut_down() {
+			bool expected = true;
+			if (running_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
+				task_queue_.not_empty_cv().notify_all();
+				for (std::thread& t : thread_list_) {
+					if (t.joinable()) {
+						t.join();
+					}
+				}
+				std::lock_guard<std::mutex> guard(mtx_);
+				thread_list_.clear();
+				thread_working_.clear();
+				thread_size_.store(0);
+				running_thread_count_.store(0);
+			}
+		}
+
+		void submit(std::coroutine_handle<> handle) {
+			if (!running_.load(std::memory_order_acquire)) {
+				Submit_error();
+			}
+			task_queue_.emplace(handle);
+			if (mode_ == mode::cached) {
+				if (task_queue_.size() > 128 * thread_size_ && thread_size_ < thread_size_threshold_) {
+					Add_thread();
+				}
+			}
+		}
+
+		bool set_basic_thread_size(std::size_t count) {
+			if (running_) {
+				return false;
+			}
+			basic_thread_size_ = count;
+			return true;
+		}
+
+		bool set_mode(mode mode_) {
+			if (running_) {
+				return false;
+			}
+			this->mode_ = mode_;
+			return true;
+		}
+
+		bool set_thread_size_threshold(std::size_t count) {
+			if (running_ && mode_ != mode::cached) {
+				return false;
+			}
+			thread_size_threshold_ = count;
+			return true;
+		}
+
+		std::size_t size() const noexcept {
+			return thread_size_.load(std::memory_order_acquire);
+		}
+
+	private:
+		void Get_task() {
+			std::coroutine_handle<> handle = std::noop_coroutine();
+			auto last_time = std::chrono::high_resolution_clock().now();
+			for (;; last_time = std::chrono::high_resolution_clock().now()) {
+				handle = std::noop_coroutine();
+				while (handle == std::noop_coroutine()) {
+					if (!running_.load(std::memory_order_acquire)) {
+						return;
+					}
+					switch (mode_) {
+					case mode::fixed: {
+						std::optional<std::coroutine_handle<>> poll_result = task_queue_.poll(running_);
 						if (poll_result != std::nullopt) {
-							task = std::move(poll_result).value();
+							handle = poll_result.value();
 						}
 						break;
 					}
 					case mode::cached: {
-						std::optional<std::function<void()>> poll_result = task_queue_.poll(running_, std::chrono::seconds(1));
+						std::optional<std::coroutine_handle<>> poll_result = task_queue_.poll(running_, std::chrono::seconds(1));
 						if (poll_result == std::nullopt) {
 							auto now_time = std::chrono::high_resolution_clock().now();
 							auto during = std::chrono::duration_cast<std::chrono::seconds>(now_time - last_time);
@@ -315,15 +488,15 @@ namespace coflux {
 							}
 						}
 						else {
-							task = std::move(poll_result).value();
+							handle = poll_result.value();
 						}
 						break;
 					}
 					}
 				}
-				if (task) {
+				if (handle != std::noop_coroutine()) {
 					running_thread_count_++;
-					task();
+					handle.resume();
 					running_thread_count_--;
 				}
 			}
@@ -450,222 +623,6 @@ namespace coflux {
 		std::thread             scheduler_thread_;
 		std::atomic_bool        running_ = false;
 	};
-
-	namespace COFLUX_DEPRECATED_BECAUSE("This is an early placeholder tool from another project")
-		sept{
-		/*
-		template <typename TaskQueue = concurrency_queue<std::function<void()>, 1024>>
-		class thread_pool;
-
-		template <std::size_t Max_queue_size, typename Container>
-		class thread_pool<concurrency_queue<std::function<void()>, Max_queue_size, Container>> {
-		public:
-			using queue_type = concurrency_queue<std::function<void()>, Max_queue_size, Container>;
-			using allocator_type = typename queue_type::allocator_type;
-			enum class mode : bool {
-				fixed, cached
-			};
-
-		public:
-			explicit thread_pool(
-				std::size_t basic_thread_size = std::thread::hardware_concurrency(),					//set basic thread size
-				mode        run_mode = mode::fixed,											//set mode
-				std::size_t thread_size_threshold = std::thread::hardware_concurrency() * 2,
-				const allocator_type& alloc = allocator_type())
-				: basic_thread_size_(basic_thread_size)
-				, queue_size_threshold_(Max_queue_size)
-				, mode_(run_mode)
-				, thread_size_threshold_(thread_size_threshold) {
-				run();
-			}
-
-			~thread_pool() {
-				shut_down();
-			};
-
-			thread_pool(const thread_pool&) = delete;
-			thread_pool(thread_pool&&) = delete;
-			thread_pool& operator=(const thread_pool&) = delete;
-			thread_pool& operator=(thread_pool&&) = delete;
-
-			void run() {
-				if (running_) {
-					return;
-				}
-				running_ = true;
-				for (int i = 0; i < basic_thread_size_; i++) {
-					thread_list_.emplace_back(std::thread(std::bind(&thread_pool::Get_task, this)));
-					thread_size_++;
-				}
-			}
-
-			void shut_down() {
-				if (!running_) {
-					return;
-				}
-				running_ = false;
-				queue_ready_.notify_all();
-				for (std::thread& t : thread_list_)
-					if (t.joinable())
-						t.join();
-				thread_list_.clear();
-				thread_size_ = basic_thread_size_;
-				running_thread_count_ = 0;
-			}
-
-			template <typename Func>
-			auto submit(Func&& func) {
-				return [&](auto&&...args) -> std::future<decltype(func(args...))> {
-					static_assert(std::is_invocable_v<Func, decltype(args)...>);
-					std::unique_lock<std::mutex> lock(queue_mtx_);	// critial
-					bool wait_result = queue_not_full_.wait_for(lock, std::chrono::seconds(30),
-						[this]() -> bool {
-							return queue_size_ < queue_size_threshold_;
-						});
-					auto result_ptr = std::make_shared<std::packaged_task<decltype(func(args...))()>>(
-						std::bind(std::forward<Func>(func), std::forward<decltype(args)>(args)...)
-					);
-					if (wait_result) {
-						task_queue_.emplace_back(
-							[result_ptr]() -> void {
-								(*result_ptr)();
-							});
-						queue_size_++;
-						queue_ready_.notify_one();
-						if (mode_ == mode::cached) {
-							if (queue_size_ > thread_size_ - running_thread_count_
-								&& thread_size_ < thread_size_threshold_ && basic_thread_size_ <= thread_size_) {
-								thread_list_.emplace_back(std::thread(std::bind(&thread_pool::Get_task, this)));
-								thread_size_++;
-							}
-						}
-					}
-					else {
-						Submit_error();
-					}
-					return result_ptr->get_future();				// !critial
-					};
-			}
-
-		private:
-			void Get_task() {
-				std::function<void()> task{};
-				auto last_time = std::chrono::high_resolution_clock().now();
-				for (;; last_time = std::chrono::high_resolution_clock().now()) {
-					{
-						std::unique_lock<std::mutex> lock(queue_mtx_);	// critial
-						while (!queue_size_) {
-							if (!running_) {
-								return;
-							}
-							switch (mode_) {
-							case mode::fixed: {
-								queue_ready_.wait(lock,
-									[this]() -> bool {
-										return queue_size_ || !running_;
-									});
-								break;
-							}
-							case mode::cached: {
-								if (!queue_ready_.wait_for(lock, std::chrono::seconds(1),
-									[this]() -> bool {
-										return queue_size_ || !running_;
-									})) {
-									auto now_time = std::chrono::high_resolution_clock().now();
-									auto during = std::chrono::duration_cast<std::chrono::seconds>(now_time - last_time);
-									if (!(thread_size_ == basic_thread_size_ || during <= max_thread_idle_time_))
-										Cached_erase_thread(std::this_thread::get_id());
-								}
-								break;
-							}
-							}
-						}
-						if (queue_size_) {
-							task = std::move(task_queue_.front());
-							task_queue_.pop_front();
-							if (--queue_size_) {
-								queue_ready_.notify_all();
-							}
-						}
-					}													// !critial
-					queue_not_full_.notify_all();
-					if (task) {
-						running_thread_count_++;
-						task();
-						running_thread_count_--;
-					}
-				}
-			}
-
-			bool Cached_erase_thread(std::thread::id target_id) {
-				auto it = std::find_if(thread_list_.begin(), thread_list_.end(),
-					[target_id](std::thread& this_thread) {
-						return this_thread.get_id() == target_id;
-					});
-				if (it != thread_list_.end()) {
-					(*it).detach();
-					thread_list_.erase(it);
-					thread_size_--;
-					return true;
-				}
-				else {
-					return false;
-				}
-			}
-
-			COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void Submit_error() {
-				throw std::runtime_error("Thread_pool can't take on a new task.");
-			}
-
-		public:
-			bool set_basic_thread_size_(std::size_t count) {
-				if (running_) {
-					return false;
-				}
-				basic_thread_size_ = count;
-				return true;
-			}
-
-			bool set_mode_(mode mode_) {
-				if (running_) {
-					return false;
-				}
-				this->mode_ = mode_;
-				return true;
-			}
-
-			bool set_thread_size_threshold_(std::size_t count) {
-				if (running_ && mode_ != mode::cached) {
-					return false;
-				}
-				thread_size_threshold_ = count;
-				return true;
-			}
-
-			std::size_t size() const noexcept {
-				return static_cast<std::size_t>(thread_size_);
-			}
-
-		private:
-			mode							      mode_;
-			std::atomic_bool					  running_ = false;
-			std::list<std::thread>				  thread_list_;
-			std::size_t							  basic_thread_size_;
-			std::size_t							  thread_size_threshold_;
-			std::atomic_uint					  thread_size_ = 0;
-			std::atomic_uint					  running_thread_count_ = 0;
-			static constexpr std::chrono::seconds max_thread_idle_time_ = std::chrono::seconds(60);
-
-			std::deque<std::function<void()>>     task_queue_;
-			std::size_t						      queue_size_threshold_;
-			std::mutex						      queue_mtx_;
-			std::condition_variable			      queue_not_full_;
-			std::condition_variable			      queue_ready_;
-			std::atomic_uint					  queue_size_ = 0;
-			static constexpr std::size_t	      default_queue_size_threshold_ = Max_queue_size;
-		};
-		*/
-	}
 }
 
 #endif // !COFLUX_CONCURRENT_HPP

@@ -65,6 +65,7 @@ TEST(StructureTest, ExceptionPropagation) {
     EXPECT_THROW(catcher_task.get_result(), std::runtime_error);
 }
 
+
 coflux::fork<void, TestExecutor> recursion_fork(auto&&, std::atomic<int>& cnt);
 coflux::task<void, TestExecutor, TestScheduler> recursion_task(auto&& env, std::atomic<int>& cnt);
 

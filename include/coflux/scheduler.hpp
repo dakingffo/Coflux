@@ -43,26 +43,28 @@ namespace coflux {
 		}
 
 		static constexpr detail::vtable vtb_ = {
-			.get_arg_by_index  = &get_arg_by_index,
+			.get_arg_by_index = &get_arg_by_index,
 			.get_arg_by_typeid = &get_arg_by_typeid
 		};
 
-		scheduler(const scheduler&)            = default;
-		scheduler(scheduler&&)                 = default;
+		scheduler(const scheduler&)			   = default;
+		scheduler(scheduler&&)				   = default;
 		scheduler& operator=(const scheduler&) = default;
 		scheduler& operator=(scheduler&&)      = default;
 
 		template <typename ...Args>
 			requires (std::constructible_from<Executors, Args>&&...)
 		scheduler(Args&&... args)
-			: tp_(std::forward<Args>(args)...) {}
+			: tp_(std::forward<Args>(args)...) {
+		}
 
 		template <schedulable Scheduler>
 			requires (!std::same_as<Scheduler, scheduler<Executors...>>)
 		scheduler(Scheduler& another)
-			: scheduler(another.template get<Executors>()...) {}
+			: scheduler(another.template get<Executors>()...) {
+		}
 
-		scheduler()  = default;
+		scheduler() = default;
 		~scheduler() = default;
 
 		template <certain_executor Idx>
@@ -88,7 +90,7 @@ namespace coflux {
 	private:
 		friend class scheduler<void>;
 
-		std::tuple<Executors...> tp_;  
+		std::tuple<Executors...> tp_;
 	};
 
 	template <>
@@ -96,13 +98,15 @@ namespace coflux {
 	public:
 		template <executive...Executors>
 		scheduler(scheduler<Executors...>& sch)
-			: scheduler_instance_(&sch.tp_), vptr_(&sch.vtb_) {}
+			: scheduler_instance_(&sch.tp_), vptr_(&sch.vtb_) {
+		}
 		scheduler()
-			: scheduler_instance_(nullptr), vptr_(nullptr) {}
+			: scheduler_instance_(nullptr), vptr_(nullptr) {
+		}
 		~scheduler() = default;
 
-		scheduler(const scheduler&)			   = default;
-		scheduler(scheduler&&)                 = default;
+		scheduler(const scheduler&)            = default;
+		scheduler(scheduler&&)				   = default;
 		scheduler& operator=(const scheduler&) = default;
 		scheduler& operator=(scheduler&&)      = default;
 

@@ -28,7 +28,7 @@ namespace coflux {
 		friend struct detail::context_awaiter;
 
 		detail::promise_fork_base<ParentOwnership>* parent_promise_ = nullptr;
-		std::pmr::memory_resource*					memo_			= nullptr;
+		std::pmr::memory_resource* memo_ = nullptr;
 		scheduler<void>						        parent_scheduler_{};
 	};
 
@@ -38,14 +38,16 @@ namespace coflux {
 
 		environment(std::pmr::memory_resource* memo, const scheduler_type& sch)
 			: memo_(memo)
-			, scheduler_(sch) {}
+			, scheduler_(sch) {
+		}
 		environment(std::pmr::memory_resource* memo, scheduler_type&& sch)
 			: memo_(memo)
-			, scheduler_(std::move(sch)) {}
+			, scheduler_(std::move(sch)) {
+		}
 		~environment() = default;
 
-		environment(const environment&)			   = default;
-		environment(environment&&)				   = default;
+		environment(const environment&)            = default;
+		environment(environment&&)                 = default;
 		environment& operator=(const environment&) = default;
 		environment& operator=(environment&&)      = default;
 
@@ -75,7 +77,7 @@ namespace coflux {
 
 	template <schedulable Scheduler, executive...Executors>
 	auto make_environment(std::pmr::memory_resource* memo, Executors&&...execs) {
-		return make_environment(memo, Scheduler{std::forward<Executors>(execs)...});
+		return make_environment(memo, Scheduler{ std::forward<Executors>(execs)... });
 	}
 
 	template <schedulable Scheduler, executive...Executors>

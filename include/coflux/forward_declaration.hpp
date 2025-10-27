@@ -48,6 +48,7 @@
 
 #define COFLUX_EXPERIMENTAL		  0
 #define COFLUX_UNDER_CONSTRUCTION 0
+#define COFLUX_PLACEHOLDER        0
 
 namespace coflux {
 	enum status : char {

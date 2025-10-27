@@ -27,10 +27,10 @@ namespace coflux {
         }
         ~awaiter() {};
 
-        awaiter(const awaiter&)            = delete;
-        awaiter(awaiter&&)                 = default;
+        awaiter(const awaiter&) = delete;
+        awaiter(awaiter&&) = default;
         awaiter& operator=(const awaiter&) = delete;
-        awaiter& operator=(awaiter&&)      = default;
+        awaiter& operator=(awaiter&&) = default;
 
         bool await_ready() const noexcept {
             return false;
@@ -38,13 +38,13 @@ namespace coflux {
 
         template <typename Promise>
         void await_suspend(std::coroutine_handle<Promise> handle) {
-            continuation_.store(handle, std::memory_order_acq_rel);
+            continuation_.store(handle);
             auto callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_]
-                <std::size_t I>(const auto& const_fork_result) {
+                <std::size_t I>(const auto & const_fork_result) {
                 auto& fork_result = const_cast<std::remove_cvref_t<decltype(const_fork_result)>&>(const_fork_result);
                 std::size_t expected = -1;
                 if (result->first.compare_exchange_strong(expected, I, std::memory_order_acq_rel)) {
-                    if (fork_result.get_status().load(std::memory_order_acquire) != completed) 
+                    if (fork_result.get_status().load(std::memory_order_acquire) != completed)
                         COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                         error = fork_result.error_;
                     }
@@ -64,11 +64,11 @@ namespace coflux {
             };
 
             auto void_callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_]
-                <std::size_t I>(const auto& const_fork_result) {
+                <std::size_t I>(const auto & const_fork_result) {
                 auto& fork_result = const_cast<std::remove_cvref_t<decltype(const_fork_result)>&>(const_fork_result);
                 std::size_t expected = -1;
                 if (result->first.compare_exchange_strong(expected, I, std::memory_order_acq_rel)) {
-                    if (fork_result.get_status().load(std::memory_order_acquire) != completed) 
+                    if (fork_result.get_status().load(std::memory_order_acquire) != completed)
                         COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                         error = fork_result.error_;
                     }
@@ -160,10 +160,10 @@ namespace coflux {
         }
         ~awaiter() {};
 
-        awaiter(const awaiter&) = delete;
-        awaiter(awaiter&&) = default;
+        awaiter(const awaiter&)            = delete;
+        awaiter(awaiter&&)                 = default;
         awaiter& operator=(const awaiter&) = delete;
-        awaiter& operator=(awaiter&&) = default;
+        awaiter& operator=(awaiter&&)      = default;
 
         bool await_ready() const noexcept {
             return false;
@@ -171,7 +171,7 @@ namespace coflux {
 
         template <typename Promise>
         void await_suspend(std::coroutine_handle<Promise> handle) {
-            continuation_.store(handle, std::memory_order_acq_rel);
+            continuation_.store(handle);
             auto callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
                 <std::size_t I>(const auto & const_basic_task_result) {
                 auto& basic_task_result = const_cast<std::remove_cvref_t<decltype(const_basic_task_result)>&>(const_basic_task_result);
@@ -280,7 +280,7 @@ namespace coflux {
         executor_pointer                                         executor_;
         std::optional<std::stop_callback<std::function<void()>>> cancellation_callback_;
     };
-    
+
     template <fork_range Range, executive Executor>
     struct awaiter<detail::when_n_pair<Range>, Executor> : public detail::maysuspend_awaiter_base {
     public:
@@ -298,7 +298,8 @@ namespace coflux {
             , basic_tasks_(std::forward<Range>(co_basic_tasks))
             , result_(std::make_shared<std::pair<std::atomic_size_t, value_type>>(0, value_type{}))
             , executor_(exec)
-            , maysuspend_awaiter_base{ p } {}
+            , maysuspend_awaiter_base{ p } {
+        }
         ~awaiter() {};
 
         awaiter(const awaiter&) = delete;
@@ -313,9 +314,9 @@ namespace coflux {
         template <typename Promise>
         void await_suspend(std::coroutine_handle<Promise> handle) {
             n_ = std::min(n_, (std::size_t)std::ranges::distance(basic_tasks_));
-            continuation_.store(handle, std::memory_order_acq_rel);
+            continuation_.store(handle);
             auto callback = [handle, n = n_, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
-                (const auto& const_basic_task_result) {
+            (const auto& const_basic_task_result) {
                 auto& basic_task_result = const_cast<std::remove_cvref_t<decltype(const_basic_task_result)>&>(const_basic_task_result);
                 std::size_t current_count = result->first.fetch_add(1, std::memory_order_acq_rel) + 1;
                 bool try_resume_from_this = false;
@@ -346,10 +347,10 @@ namespace coflux {
                         }
                     }
                 }
-            };
+                };
 
             auto void_callback = [handle, n = n_, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
-                (const auto & const_basic_task_result) {
+            (const auto& const_basic_task_result) {
                 auto& basic_task_result = const_cast<std::remove_cvref_t<decltype(const_basic_task_result)>&>(const_basic_task_result);
                 std::size_t current_count = result->first.fetch_add(1, std::memory_order_acq_rel) + 1;
                 bool try_resume_from_this = false;
@@ -374,7 +375,7 @@ namespace coflux {
                         executor_traits::execute(exec, handle_to_resume);
                     }
                 }
-            };
+                };
 
             cancellation_callback_.emplace(handle.promise().stop_source_.get_token(),
                 [&stop_source = stop_source_]() {

@@ -10,7 +10,7 @@
 namespace coflux {
 	class noop_executor {
 	public:
-		noop_executor() = default;
+		noop_executor()  = default;
 		~noop_executor() = default;
 
 		noop_executor(const noop_executor&)				  = default;
@@ -53,8 +53,8 @@ namespace coflux {
 		async_executor()  = default;
 		~async_executor() = default;
 
-		async_executor(const async_executor&)               = default;
-		async_executor(async_executor&&)                    = default;
+		async_executor(const async_executor&)			    = default;
+		async_executor(async_executor&&)				    = default;
 		async_executor& operator=(const async_executor&)    = default;
 		async_executor& operator=(async_executor&& another) = default;
 
@@ -68,37 +68,32 @@ namespace coflux {
 		}
 	};
 
-    template <typename TaskQueue = unbounded_queue<>>
+	//template <typename TaskQueue = moodycamel::BlockingConcurrentQueue<std::coroutine_handle<>>>
+	template <typename TaskQueue = unbounded_queue<>>
 	class thread_pool_executor {
 	public:
-		using thread_pool    = coflux::thread_pool<TaskQueue>;
-		using queue_type     = typename thread_pool::queue_type;
-		using container_type = typename queue_type::container_type;
-		using allocator_type = typename thread_pool::allocator_type;
+		using thread_pool = coflux::thread_pool<TaskQueue>;
+		using queue_type  = typename thread_pool::queue_type;
 
 	public:
 		template <typename...Args>
 		thread_pool_executor(
-			std::size_t		      basic_thread_size		= std::thread::hardware_concurrency(),
-			mode                  run_mode			    = mode::fixed,
-			std::size_t		      thread_size_threshold = std::thread::hardware_concurrency() * 2,
-			Args&&...			  args)
+			std::size_t basic_thread_size	  = std::thread::hardware_concurrency(),
+			mode        run_mode			  = mode::fixed,
+			std::size_t thread_size_threshold = std::thread::hardware_concurrency() * 2,
+			Args&&...   args)
 			: pool_(std::make_shared<thread_pool>(
-				basic_thread_size, run_mode, thread_size_threshold, std::forward<Args>(args)...)) {}
+				basic_thread_size, run_mode, thread_size_threshold, std::forward<Args>(args)...)) {
+		}
 		~thread_pool_executor() = default;
 
-		thread_pool_executor(const thread_pool_executor&)				= default;
-		thread_pool_executor(thread_pool_executor&&)				    = default;
-		thread_pool_executor& operator=(const thread_pool_executor&)    = default;
-		thread_pool_executor& operator=(thread_pool_executor&& another) = default;
+		thread_pool_executor(const thread_pool_executor&) = default;
+		thread_pool_executor(thread_pool_executor&&) = default;
+		thread_pool_executor& operator=(const thread_pool_executor&) = default;
+		thread_pool_executor& operator=(thread_pool_executor&&) = default;
 
 		void execute(std::coroutine_handle<> handle) {
-			execute([handle]() { handle.resume(); });
-		}
-
-		template <typename Func, typename... Args>
-		auto execute(Func&& func, Args&&...args) {
-			return pool_->submit(std::forward<Func>(func))(std::forward<Args>(args)...);
+			pool_->submit(handle);
 		}
 
 		thread_pool& get_thread_pool() {
@@ -118,10 +113,11 @@ namespace coflux {
 
 	public:
 		timer_executor()
-			: thread_(std::make_shared<timer_thread>()) {}
+			: thread_(std::make_shared<timer_thread>()) {
+		}
 		~timer_executor() = default;
 
-		timer_executor(const timer_executor&)			 = default;
+		timer_executor(const timer_executor&)            = default;
 		timer_executor(timer_executor&&)                 = default;
 		timer_executor& operator=(const timer_executor&) = default;
 		timer_executor& operator=(timer_executor&&)      = default;

@@ -23,10 +23,10 @@ namespace coflux {
 				}
 			}
 
-			result(const result&)		     = delete;
-			result(result&&)			     = delete;
+			result(const result&)			 = delete;
+			result(result&&)				 = delete;
 			result& operator=(const result&) = delete;
-			result& operator=(result&&)      = delete;
+			result& operator=(result&&)		 = delete;
 
 			template <typename Ref>
 			void emplace_value(Ref&& ref) noexcept(std::is_nothrow_constructible_v<value_type, Ref>) {
@@ -84,10 +84,10 @@ namespace coflux {
 			result() : error_(nullptr), st_(running) {}
 			~result() = default;
 
-			result(const result&) = delete;
-			result(result&&) = delete;
+			result(const result&)            = delete;
+			result(result&&)                 = delete;
 			result& operator=(const result&) = delete;
-			result& operator=(result&&) = delete;
+			result& operator=(result&&)      = delete;
 
 			void emplace_void() noexcept {
 				st_.store(completed, std::memory_order_release);
@@ -134,8 +134,8 @@ namespace coflux {
 
 		template <bool Ownership>
 		struct promise_fork_base {
-			using handle_type = std::coroutine_handle<promise_fork_base<false>>;
-			using brother_handle = std::conditional_t<Ownership, std::monostate, handle_type>;
+			using handle_type               = std::coroutine_handle<promise_fork_base<false>>;
+			using brother_handle            = std::conditional_t<Ownership, std::monostate, handle_type>;
 			using cancellaton_callback_type = std::optional<std::stop_callback<std::function<void()>>>;
 
 			promise_fork_base() {
@@ -433,7 +433,7 @@ namespace coflux {
 
 		template <typename Ty>
 		struct promise_yield_base {
-			using value_type = Ty;
+			using value_type  = Ty;
 			using yield_proxy = std::optional<Ty>;
 
 			void unhandled_exception() noexcept {
@@ -476,7 +476,7 @@ namespace coflux {
 			using result_proxy = typename result_base::result_proxy;
 			using result_type  = typename result_base::result_type;
 
-			promise_base()  = default;
+			promise_base() = default;
 			~promise_base() = default;
 
 			constexpr Initial initial_suspend() const noexcept { return {}; }
@@ -501,7 +501,7 @@ namespace coflux {
 		simple_awaitable Initial, simple_awaitable Final, bool Ownership>
 	struct promise<detail::basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>> final
 		: public detail::promise_base<Ty, Initial, Final, true, Ownership> {
-		using base             = detail::promise_base<Ty, Initial, Final, true, Ownership>;
+		using base		       = detail::promise_base<Ty, Initial, Final, true, Ownership>;
 		using result_base      = typename base::result_base;
 		using fork_base        = typename base::fork_base;
 		using value_type       = typename base::value_type;
@@ -731,8 +731,8 @@ namespace coflux {
 	struct promise<generator<Ty>> final
 		: public detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false> {
 		using base = detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false>;
-		using value_type = typename base::value_type;
-		using yield_proxy = typename base::yield_proxy;
+		using value_type     = typename base::value_type;
+		using yield_proxy    = typename base::yield_proxy;
 		using generator_type = generator<Ty>;
 
 		promise() noexcept {
