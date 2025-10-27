@@ -87,10 +87,10 @@ namespace coflux {
 		}
 		~thread_pool_executor() = default;
 
-		thread_pool_executor(const thread_pool_executor&) = default;
-		thread_pool_executor(thread_pool_executor&&) = default;
+		thread_pool_executor(const thread_pool_executor&)			 = default;
+		thread_pool_executor(thread_pool_executor&&)			     = default;
 		thread_pool_executor& operator=(const thread_pool_executor&) = default;
-		thread_pool_executor& operator=(thread_pool_executor&&) = default;
+		thread_pool_executor& operator=(thread_pool_executor&&)      = default;
 
 		void execute(std::coroutine_handle<> handle) {
 			pool_->submit(handle);

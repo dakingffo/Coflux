@@ -67,6 +67,7 @@ static void BM_PmrPool_ForkCreationAndDestruction(benchmark::State& state) {
             }(env);
 
         test_task.join();
+        state.ResumeTiming();
     }
     state.SetItemsProcessed(state.iterations() * state.range(0));
 }

@@ -25,12 +25,12 @@ static void BM_PmrThreadPool_ForkCreationAndDestruction(benchmark::State& state)
             for (long long i = 0; i < forks_to_create; ++i) {
                 trivial_fork_on_thread_pool(co_await coflux::context());
             }
-            co_await coflux::this_task::destroy_forks();
             state.PauseTiming();
 
             }(env);
 
         test_task.join();
+        state.ResumeTiming();
     }
     state.SetItemsProcessed(state.iterations() * state.range(0));
 }
@@ -68,6 +68,7 @@ static void BM_PmrPoolThreadPool_ForkCreationAndDestruction(benchmark::State& st
             }(env);
 
         test_task.join();
+        state.ResumeTiming();
     }
     state.SetItemsProcessed(state.iterations() * state.range(0));
 }

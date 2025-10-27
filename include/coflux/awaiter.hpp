@@ -175,6 +175,7 @@ namespace coflux {
 
             template <typename Promise>
             constexpr void await_suspend(std::coroutine_handle<Promise> handle) const noexcept {
+                std::atomic_signal_fence(std::memory_order_acquire);
                 auto& promise = handle.promise();
                 promise.invoke_callbacks();
                 bool expected = false;
