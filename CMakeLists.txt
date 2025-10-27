@@ -64,10 +64,11 @@ if(COFLUX_BUILD_BENCHMARKS)
     )
     FetchContent_MakeAvailable(googlebenchmark)
 
-    file(GLOB BENCHMARKS "benchmarks/*.cpp")
-    add_executable(coflux_benchmarks ${BENCHMARKS})
-
-    target_link_libraries(coflux_benchmarks PRIVATE coflux benchmark::benchmark_main)
+    add_executable(coflux_benchmarks_noop_creation "benchmarks/bench_noop_creation.cpp")
+    target_link_libraries(coflux_benchmarks_noop_creation PRIVATE coflux benchmark::benchmark_main)
+    add_executable(coflux_benchmarks_thread_pool_creation "benchmarks/bench_thread_pool_creation.cpp")
+    target_link_libraries(coflux_benchmarks_thread_pool_creation PRIVATE coflux benchmark::benchmark_main)
+    
 endif()
 
 
