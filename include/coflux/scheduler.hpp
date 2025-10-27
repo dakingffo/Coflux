@@ -77,9 +77,9 @@ namespace coflux {
 			return std::get<Executor>(tp_);
 		}
 
-		template <executive_or_certain_executor...Executors>
+		template <executive_or_certain_executor...Execs>
 		auto to() {
-			return scheduler(get<Executors>()...);
+			return scheduler(get<Execs>()...);
 		}
 
 		template <schedulable Scheduler>

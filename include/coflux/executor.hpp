@@ -58,13 +58,13 @@ namespace coflux {
 		async_executor& operator=(const async_executor&)    = default;
 		async_executor& operator=(async_executor&& another) = default;
 
-		void execute(std::coroutine_handle<> handle) {
-			execute([handle]() { handle.resume(); });
-		}
-
 		template <typename Func, typename... Args>
 		auto execute(Func&& func, Args&&...args) {
 			return std::async(std::launch::async, std::forward<Func>(func), std::forward<Args>(args)...);
+		}
+
+		void execute(std::coroutine_handle<> handle) {
+			execute([handle]() { handle.resume(); });
 		}
 	};
 
