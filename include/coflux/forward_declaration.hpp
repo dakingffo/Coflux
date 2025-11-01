@@ -30,6 +30,7 @@
 #include <iterator>
 #include <typeindex>
 #include <utility>
+#include <random>
 
 #include <vector>
 #include <list>
@@ -45,10 +46,17 @@
 #include <semaphore>
 #include <latch>
 #include <stop_token>
+#include <source_location>
 
 #define COFLUX_EXPERIMENTAL		  0
 #define COFLUX_UNDER_CONSTRUCTION 0
 #define COFLUX_PLACEHOLDER        0
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
 
 namespace coflux {
 	enum status : char {

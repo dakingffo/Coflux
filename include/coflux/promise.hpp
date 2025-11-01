@@ -150,6 +150,18 @@ namespace coflux {
 				destroy_forks();
 			}
 
+			void join_forks() {
+				handle_type next = nullptr;
+				handle_type fork = children_head_;
+				while (fork) {
+					auto& fork_promise = fork.promise();
+					next = fork_promise.brothers_next_;
+					fork_promise.final_semaphore_acquire();
+					fork_promise.join_forks();
+					fork = next;
+				}
+			}
+
 			void fork_child(handle_type new_children) noexcept {
 				auto& child_promise = new_children.promise();
 #if COFLUX_DEBUG
@@ -172,7 +184,6 @@ namespace coflux {
 				while (fork) {
 					auto& fork_promise = fork.promise();
 					next = fork_promise.brothers_next_;
-					fork_promise.final_semaphore_acquire();
 					fork.destroy();
 					fork = next;
 				}
@@ -184,14 +195,14 @@ namespace coflux {
 
 			void final_semaphore_acquire() noexcept {
 				if (already_final_.load(std::memory_order_acquire) == false) {
-					sem_.acquire();
+					final_sem_.acquire();
 				}
 			}
 
 			std::atomic_bool      already_final_ = false;
-			std::binary_semaphore sem_{ 0 };
+			std::binary_semaphore final_sem_{ 0 };
 			std::stop_source      stop_source_;
-			handle_type           children_head_ = nullptr;
+			handle_type           children_head_   = nullptr;
 
 			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) brother_handle			  brothers_next_ {};
 
@@ -219,18 +230,32 @@ namespace coflux {
 			promise_result_base() = default;
 			~promise_result_base() override = default;
 
+			void invoke_callbacks_then_release_semaphore() {
+				invoke_callbacks();
+				bool expected = false;
+				if (this->already_final_.compare_exchange_strong(expected, true, std::memory_order_relaxed)) {
+					this->final_sem_.release();
+				}
+			}
+
 			void unhandled_exception() noexcept {
 				result_.emplace_error(std::current_exception());
+				std::atomic_signal_fence(std::memory_order_seq_cst);
+				invoke_callbacks_then_release_semaphore();
 			}
 
 			template <typename Ret>
 			void return_value(Ret&& value) noexcept(std::is_nothrow_constructible_v<value_type, Ret>) {
 				result_.emplace_value(std::forward<Ret>(value));
+				std::atomic_signal_fence(std::memory_order_seq_cst);
+				invoke_callbacks_then_release_semaphore();
 			}
 
 			void cancel() noexcept {
 				result_.emplace_cancel(cancel_exception(Ownership));
 				this->stop_source_.request_stop();
+				std::atomic_signal_fence(std::memory_order_seq_cst);
+				invoke_callbacks_then_release_semaphore();
 			}
 
 			const value_type& get_result()& {
@@ -254,6 +279,7 @@ namespace coflux {
 				status st = this->result_.get_status().load(std::memory_order_acquire);
 				if (!(st == running || st == suspending)) {
 					func(this->result_);
+					return;
 				}
 				std::unique_lock<std::mutex> lock(this->mtx_);
 				st = this->result_.get_status().load(std::memory_order_acquire);
@@ -270,6 +296,7 @@ namespace coflux {
 			void then(Func&& func) {
 				emplace_or_invoke_callback(
 					[func = std::forward<Func>(func)](const result_proxy& res) {
+						//std::cout << "reach then\n";
 						func();
 					});
 			}
@@ -278,7 +305,8 @@ namespace coflux {
 			void on_value(Func&& func) {
 				emplace_or_invoke_callback(
 					[func = std::forward<Func>(func)](const result_proxy& res) {
-						if (res.st_.load(std::memory_order_acquire) == completed) {
+						if (res.st_.load(std::memory_order_relaxed) == completed) {
+							//std::cout << "reach on_value\n";
 							func(res.value());
 						}
 					});
@@ -288,7 +316,8 @@ namespace coflux {
 			void on_error(Func&& func) {
 				emplace_or_invoke_callback(
 					[func = std::forward<Func>(func)](const result_proxy& res) {
-						if (res.st_.load(std::memory_order_acquire) == failed) {
+						if (res.st_.load(std::memory_order_relaxed) == failed) {
+							//std::cout << "reach on_error\n";
 							func(res.error());
 							const_cast<result_proxy&>(res).st_.store(handled, std::memory_order_release);
 						}
@@ -299,7 +328,8 @@ namespace coflux {
 			void on_cancel(Func&& func) {
 				emplace_or_invoke_callback(
 					[func = std::forward<Func>(func)](const result_proxy& res) {
-						if (res.st_.load(std::memory_order_acquire) == cancelled) {
+						if (res.st_.load(std::memory_order_relaxed) == cancelled) {
+							//std::cout << "reach on_cancel\n";
 							func();
 							const_cast<result_proxy&>(res).st_.store(handled, std::memory_order_release);
 						}
@@ -333,17 +363,31 @@ namespace coflux {
 			promise_result_base() = default;
 			~promise_result_base() override = default;
 
+			void invoke_callbacks_then_release_semaphore() {
+				invoke_callbacks();
+				bool expected = false;
+				if (this->already_final_.compare_exchange_strong(expected, true, std::memory_order_seq_cst)) {
+					this->final_sem_.release();
+				}
+			}
+
 			void unhandled_exception() noexcept {
 				result_.emplace_error(std::current_exception());
+				std::atomic_signal_fence(std::memory_order_seq_cst);
+				invoke_callbacks_then_release_semaphore();
 			}
 
 			void return_void() noexcept {
 				result_.emplace_void();
+				std::atomic_signal_fence(std::memory_order_seq_cst);
+				invoke_callbacks_then_release_semaphore();
 			}
 
 			void cancel() noexcept {
 				result_.emplace_cancel(cancel_exception(Ownership));
 				this->stop_source_.request_stop();
+				std::atomic_signal_fence(std::memory_order_seq_cst);
+				invoke_callbacks_then_release_semaphore();
 			}
 
 			void get_result() {
@@ -363,6 +407,7 @@ namespace coflux {
 				status st = this->result_.get_status().load(std::memory_order_acquire);
 				if (!(st == running || st == suspending)) {
 					func(this->result_);
+					return;
 				}
 				std::unique_lock<std::mutex> lock(this->mtx_);
 				st = this->result_.get_status().load(std::memory_order_acquire);
@@ -379,6 +424,7 @@ namespace coflux {
 			void then(Func&& func) {
 				emplace_or_invoke_callback(
 					[func = std::forward<Func>(func)](const result_proxy& res) {
+						//std::cout << "reach then\n";
 						func();
 					});
 			}
@@ -387,7 +433,8 @@ namespace coflux {
 			void on_void(Func&& func) {
 				emplace_or_invoke_callback(
 					[func = std::forward<Func>(func)](const result_proxy& res) {
-						if (res.st_.load(std::memory_order_acquire) == completed) {
+						if (res.st_.load(std::memory_order_relaxed) == completed) {
+							//std::cout << "reach on_void\n";
 							func();
 						}
 					});
@@ -397,7 +444,8 @@ namespace coflux {
 			void on_error(Func&& func) {
 				emplace_or_invoke_callback(
 					[func = std::forward<Func>(func)](const result_proxy& res) {
-						if (res.st_.load(std::memory_order_acquire) == failed) {
+						if (res.st_.load(std::memory_order_relaxed) == failed) {
+							//std::cout << "reach on_error\n";
 							func(res.error());
 							const_cast<result_proxy&>(res).st_.store(handled, std::memory_order_release);
 						}
@@ -408,7 +456,8 @@ namespace coflux {
 			void on_cancel(Func&& func) {
 				emplace_or_invoke_callback(
 					[func = std::forward<Func>(func)](const result_proxy& res) {
-						if (res.st_.load(std::memory_order_acquire) == cancelled) {
+						if (res.st_.load(std::memory_order_relaxed) == cancelled) {
+							//std::cout << "reach on_cancel\n";
 							func();
 							const_cast<result_proxy&>(res).st_.store(handled, std::memory_order_release);
 						}
@@ -627,7 +676,7 @@ namespace coflux {
 		}
 
 		auto await_transform(detail::context_t) noexcept {
-			return detail::context_awaiter<Ownership>{this, memo_, scheduler_};
+			return detail::context_awaiter<Ownership>{this, memo_, scheduler<void>(scheduler_)};
 		}
 
 		auto await_transform(detail::get_scheduler_awaiter<scheduler<void>>&& awaiter) noexcept {

@@ -27,10 +27,10 @@ namespace coflux {
         }
         ~awaiter() {};
 
-        awaiter(const awaiter&) = delete;
-        awaiter(awaiter&&) = default;
+        awaiter(const awaiter&)            = delete;
+        awaiter(awaiter&&)                 = default;
         awaiter& operator=(const awaiter&) = delete;
-        awaiter& operator=(awaiter&&) = default;
+        awaiter& operator=(awaiter&&)      = default;
 
         bool await_ready() const noexcept {
             return false;
@@ -109,11 +109,10 @@ namespace coflux {
                 (set_callback_for_each.template operator() < Is > (), ...);
             };
             set_callback((std::make_index_sequence<N>()));
-
             if (result_->first.load(std::memory_order_acquire) != -1) {
                 std::coroutine_handle<> handle_to_resume = continuation_.exchange(nullptr);
                 if (handle_to_resume) {
-                    handle_to_resume.resume();
+                    executor_traits::execute(executor_, handle_to_resume);
                 }
             }
             else {
@@ -122,7 +121,7 @@ namespace coflux {
         }
 
         decltype(auto) await_resume() {
-            auto _ = result_->first.load(std::memory_order_acquire);
+            std::atomic_thread_fence(std::memory_order_seq_cst);
             maysuspend_awaiter_base::await_resume();
             if (error_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                 std::rethrow_exception(error_);
@@ -250,7 +249,7 @@ namespace coflux {
             if (result_->first.load(std::memory_order_acquire) == 0) {
                 std::coroutine_handle<> handle_to_resume = continuation_.exchange(nullptr);
                 if (handle_to_resume) {
-                    handle_to_resume.resume();
+                    executor_traits::execute(executor_, handle_to_resume);
                 }
             }
             else {
@@ -259,7 +258,7 @@ namespace coflux {
         }
 
         decltype(auto) await_resume() {
-            auto _ = result_->first.load(std::memory_order_acquire);
+            std::atomic_thread_fence(std::memory_order_seq_cst);
             maysuspend_awaiter_base::await_resume();
             if (error_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                 std::rethrow_exception(error_);
@@ -397,7 +396,7 @@ namespace coflux {
             if (result_->first.load(std::memory_order_acquire) >= n_) {
                 std::coroutine_handle<> handle_to_resume = continuation_.exchange(nullptr);
                 if (handle_to_resume) {
-                    handle_to_resume.resume();
+                    executor_traits::execute(executor_, handle_to_resume);
                 }
             }
             else {
@@ -406,7 +405,7 @@ namespace coflux {
         }
 
         decltype(auto) await_resume() {
-            auto _ = result_->first.load(std::memory_order_acquire);
+            std::atomic_thread_fence(std::memory_order_seq_cst);
             maysuspend_awaiter_base::await_resume();
             if (error_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                 std::rethrow_exception(error_);

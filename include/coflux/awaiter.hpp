@@ -156,11 +156,11 @@ namespace coflux {
 
         struct maysuspend_awaiter_base {
             void await_suspend() {
-                waiter_status_->store(suspending, std::memory_order_release);
+                waiter_status_->store(suspending, std::memory_order_relaxed);
             }
 
             void await_resume() {
-                waiter_status_->store(running, std::memory_order_release);
+                waiter_status_->store(running, std::memory_order_relaxed);
             }
 
             void set_waiter_status_ptr(std::atomic<status>* p) {
@@ -175,13 +175,8 @@ namespace coflux {
 
             template <typename Promise>
             constexpr void await_suspend(std::coroutine_handle<Promise> handle) const noexcept {
-                std::atomic_signal_fence(std::memory_order_acquire);
-                auto& promise = handle.promise();
-                promise.invoke_callbacks();
-                bool expected = false;
-                if (promise.already_final_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
-                    promise.sem_.release();
-                }
+                //std::atomic_signal_fence(std::memory_order_seq_cst);
+                //handle.promise().invoke_callbacks_then_release_semaphore();
             }
 
             constexpr void await_resume() const noexcept {}
@@ -218,15 +213,20 @@ namespace coflux {
             return task_.done();
         }
 
-        bool await_suspend(std::coroutine_handle<> handle) {
+        template <typename Promise>
+        bool await_suspend(std::coroutine_handle<Promise> handle) {
             if (task_.done()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                 return false;
             }
+            maysuspend_awaiter_base::await_suspend();
             std::atomic_signal_fence(std::memory_order_acquire);
             task_.then([exec = executor_, handle]() {
-                executor_traits::execute(exec, handle);
+                if (handle.promise().get_status().load(std::memory_order_relaxed) == suspending) {
+                    //std::cout << "reach then {handle.resume()}\n";
+                    executor_traits::execute(exec, handle);
+                }
+                //std::cout << "reach then after {handle.resume()}\n";
                 });
-            maysuspend_awaiter_base::await_resume();
             return true;
         }
 

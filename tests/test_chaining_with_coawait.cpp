@@ -72,14 +72,13 @@ TEST(ChainingWithCoAwait, TaskMoveOnValueSuccess) {
 
     auto test_task = [&](auto env) -> coflux::task<int, TestExecutor, TestScheduler> {
         auto result = co_await success_task(env) // co_await 右值 task
-            .on_value([&](int v) { // 值传递回调参数
+            .on_value([&](int v) {
             value_callback_executed = true;
             callback_value = v;
                 })
             .on_error([&](auto e) {
             error_callback_executed = true;
                 });
-
         EXPECT_EQ(result, 42);
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
         EXPECT_TRUE(value_callback_executed);

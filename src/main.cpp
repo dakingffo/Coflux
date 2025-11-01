@@ -71,7 +71,7 @@ int main() {
         // 创建一个顶层task来管理一组并发连接
         {
             using task_scheduler = coflux::scheduler<coflux::thread_pool_executor<>, coflux::timer_executor>;
-            auto env = coflux::make_environment<task_scheduler>();
+            auto env = coflux::make_environment<task_scheduler>(coflux::thread_pool_executor<>{1}, coflux::timer_executor{});
             auto server_task = [](auto& env) -> coflux::task<void, task_executor, task_scheduler> {
                 std::cout << "Server task starting 3 concurrent connections...\n";
                 co_await coflux::when_all(
@@ -123,7 +123,7 @@ int main() {
         std::cout << val << " ";
     }
     std::cout << "\n\n--- Generator Demo Finished ---\n";
-
+    
     // --- 3. 演示构造fork的range利用when将异步解析到同步作用域 ---
     std::cout << "\n--- 3. Demonstrating A Task Range then using when(n) to parse Async operations into a Sync scope. ---\n";
     {
@@ -140,6 +140,6 @@ int main() {
             }(env);
     }
     std::cout << "\n\n--- All Demo Finished ---\n";
-
+    
     return 0;
 }

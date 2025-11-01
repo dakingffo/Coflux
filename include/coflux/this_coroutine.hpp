@@ -227,6 +227,7 @@ namespace coflux {
 
             template <typename Promise>
             bool await_suspend(std::coroutine_handle<Promise> handle) const noexcept {
+                handle.promise().join_forks();
                 handle.promise().destroy_forks();
                 return false;
             }
@@ -289,7 +290,7 @@ namespace coflux {
 
         template <bool Ownership>
         struct context_awaiter : public nonsuspend_awaiter_base, ownership_tag<Ownership> {
-            context_awaiter(promise_fork_base<Ownership>* p, std::pmr::memory_resource* m, scheduler<void> sch)
+            context_awaiter(promise_fork_base<Ownership>* p, std::pmr::memory_resource* m, const scheduler<void>& sch)
                 : parent_promise_(p)
                 , memo_(m)
                 , parent_scheduler_(sch) {}
@@ -301,13 +302,10 @@ namespace coflux {
             context_awaiter& operator=(context_awaiter&&)      = default;
 
             bool await_ready() const noexcept {
-                return false;
+                return true;
             }
 
-            template <typename Promise>
-            bool await_suspend(std::coroutine_handle<Promise> handle) noexcept {
-                return false;
-            }
+            void await_suspend(std::coroutine_handle<> handle) noexcept {}
 
             environment_info<Ownership> await_resume() const noexcept {
                 return { parent_promise_, memo_, parent_scheduler_ };

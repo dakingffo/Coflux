@@ -5,7 +5,8 @@
 #ifndef COFLUX_EXECUTOR_HPP
 #define COFLUX_EXECUTOR_HPP
 
-#include "concurrent.hpp"
+#include "concurrent/thread_pool.hpp"
+#include "concurrent/timer_thread.hpp"
 
 namespace coflux {
 	class noop_executor {
@@ -67,7 +68,7 @@ namespace coflux {
 			execute([handle]() { handle.resume(); });
 		}
 	};
-
+	
 	//template <typename TaskQueue = moodycamel::BlockingConcurrentQueue<std::coroutine_handle<>>>
 	template <typename TaskQueue = unbounded_queue<>>
 	class thread_pool_executor {

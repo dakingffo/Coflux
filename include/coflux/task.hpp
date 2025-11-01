@@ -21,25 +21,26 @@ namespace coflux {
 		public:
 			static_assert(std::is_object_v<Ty> || std::is_void_v<Ty>, "basic_task must be instantiated by the object type or void.");
 
-			using promise_type = promise<basic_task>;
-			using value_type = typename promise_type::value_type;
-			using result_type = typename promise_type::result_type;
-			using executor_traits = typename promise_type::executor_traits;
-			using executor_type = typename promise_type::executor_type;
+			using promise_type     = promise<basic_task>;
+			using value_type       = typename promise_type::value_type;
+			using result_type      = typename promise_type::result_type;
+			using executor_traits  = typename promise_type::executor_traits;
+			using executor_type    = typename promise_type::executor_type;
 			using executor_pointer = typename promise_type::executor_pointer;
-			using scheduler_type = typename promise_type::scheduler_type;
-			using handle_type = std::coroutine_handle<promise_type>;
+			using scheduler_type   = typename promise_type::scheduler_type;
+			using handle_type      = std::coroutine_handle<promise_type>;
 
 		public:
 			explicit basic_task(handle_type handle = nullptr) noexcept : handle_(handle) {}
 			~basic_task() {
 				if constexpr (Ownership) {
 					Nothrow_join();
+					Join_forks();
 					Destroy();
 				}
 			}
 
-			basic_task(const basic_task&) = delete;
+			basic_task(const basic_task&)            = delete;
 			basic_task& operator=(const basic_task&) = delete;
 
 			basic_task(basic_task && another) noexcept
@@ -65,8 +66,8 @@ namespace coflux {
 				return std::move(handle_.promise()).get_result();
 			}
 
-			// 调用一个basic_task的resume会使的他从他的调度器中恢复执行。
-			// Calling resume on a basic_task will cause it to resume execution from its executor.
+			 //调用一个basic_task的resume会使的他从他的调度器中恢复执行。
+			 //Calling resume on a basic_task will cause it to resume execution from its executor.
 			void resume() const {
 				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_handle_error();
@@ -218,6 +219,18 @@ namespace coflux {
 			template <typename T, executive E>
 			friend struct ::coflux::awaiter;
 
+			void Nothrow_join() {
+				if (handle_) {
+					handle_.promise().final_semaphore_acquire();
+				}
+			}
+
+			void Join_forks() {
+				if (handle_) {
+					handle_.promise().join_forks();
+				}
+			}
+
 			void Destroy() {
 				if (handle_) {
 					handle_.destroy();
@@ -228,12 +241,6 @@ namespace coflux {
 			template <typename Func>
 			void On_result(Func && func) {
 				handle_.promise().emplace_or_invoke_callback(std::forward<Func>(func));
-			}
-
-			void Nothrow_join() {
-				if (handle_) {
-					handle_.promise().final_semaphore_acquire();
-				}
 			}
 
 			template <typename Func>
@@ -266,17 +273,19 @@ namespace coflux {
 		static_assert(std::is_object_v<Ty> || std::is_void_v<Ty>, "fork_view must be instantiated by the object type or void.");
 
 		using promise_type = detail::promise_result_base<Ty, false>;
-		using value_type = typename promise_type::value_type;
-		using result_type = typename promise_type::result_type;
-		using handle_type = std::coroutine_handle<promise_type>;
+		using value_type   = typename promise_type::value_type;
+		using result_type  = typename promise_type::result_type;
+		using handle_type  = std::coroutine_handle<promise_type>;
 
 	public:
 		~fork_view() = default;
 
-		fork_view(const fork_view&) = default;
+		fork_view(const fork_view&)            = default;
+		fork_view(fork_view&&)				   = default;
 		fork_view& operator=(const fork_view&) = default;
+		fork_view& operator=(fork_view&&)      = default;
 
-		decltype(auto) get_result()& {
+		decltype(auto) get_result() {
 			Nothrow_join();
 			return handle_.promise().get_result();
 		}

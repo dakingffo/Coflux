@@ -68,7 +68,9 @@ if(COFLUX_BUILD_BENCHMARKS)
     target_link_libraries(coflux_benchmarks_noop_creation PRIVATE coflux benchmark::benchmark_main)
     add_executable(coflux_benchmarks_thread_pool_creation "benchmarks/bench_thread_pool_creation.cpp")
     target_link_libraries(coflux_benchmarks_thread_pool_creation PRIVATE coflux benchmark::benchmark_main)
-    
+    add_executable(coflux_benchmarks_pipeline "benchmarks/bench_pipeline.cpp")
+    target_link_libraries(coflux_benchmarks_pipeline PRIVATE coflux benchmark::benchmark_main)
+
 endif()
 
 

@@ -98,11 +98,9 @@ namespace coflux {
 	public:
 		template <executive...Executors>
 		scheduler(scheduler<Executors...>& sch)
-			: scheduler_instance_(&sch.tp_), vptr_(&sch.vtb_) {
-		}
+			: scheduler_instance_(&sch.tp_), vptr_(&sch.vtb_) {}
 		scheduler()
-			: scheduler_instance_(nullptr), vptr_(nullptr) {
-		}
+			: scheduler_instance_(nullptr), vptr_(nullptr) {}
 		~scheduler() = default;
 
 		scheduler(const scheduler&)            = default;
@@ -111,7 +109,7 @@ namespace coflux {
 		scheduler& operator=(scheduler&&)      = default;
 
 		template <certain_executor Idx>
-		auto& get() {
+		auto& get() noexcept /* Call std::terminate when throw */ {
 			auto p = static_cast<typename Idx::type*>(vptr_->get_arg_by_index(scheduler_instance_, Idx::value));
 			if (!p) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				Null_ptr_error();
@@ -120,7 +118,7 @@ namespace coflux {
 		}
 
 		template <executive Executor>
-		auto& get() {
+		auto& get() noexcept /* Call std::terminate when throw */ {
 			auto p = static_cast<Executor*>(vptr_->get_arg_by_typeid(scheduler_instance_, typeid(Executor)));
 			if (!p) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				Null_ptr_error();

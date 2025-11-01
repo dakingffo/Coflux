@@ -35,14 +35,14 @@ static void BM_Pmr_ForkCreation(benchmark::State& state) {
 }
 
 BENCHMARK(BM_Pmr_ForkCreation)
-    ->Arg(100000)   
-    ->Arg(500000)    
-    ->Arg(1000000)  
-    ->Arg(3000000)  
-    ->Arg(5000000)   
-    ->Arg(7000000)   
+    ->Arg(100000)
+    ->Arg(500000)
+    ->Arg(1000000)
+    ->Arg(3000000)
+    ->Arg(5000000)
+    ->Arg(7000000)
     ->Arg(10000000)
-    ->MinWarmUpTime(5.0);
+    ->MinWarmUpTime(3.0);
 
 static void BM_PmrPool_ForkCreationAndDestruction(benchmark::State& state) {
     state.SetLabel("memory_resource : monotonic + unsynchronized_pool");
@@ -80,4 +80,4 @@ BENCHMARK(BM_PmrPool_ForkCreationAndDestruction)
     ->Arg(5000000)   
     ->Arg(7000000)   
     ->Arg(10000000)
-    ->MinWarmUpTime(5.0);
+    ->MinWarmUpTime(3.0);

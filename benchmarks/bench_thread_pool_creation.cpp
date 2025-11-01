@@ -43,7 +43,8 @@ BENCHMARK(BM_PmrThreadPool_ForkCreationAndDestruction)
     ->Arg(5000000)
     ->Arg(7000000)
     ->Arg(10000000)
-    ->MinWarmUpTime(5.0);
+    ->UseRealTime()
+    ->MinWarmUpTime(3.0);
 
 static void BM_PmrPoolThreadPool_ForkCreationAndDestruction(benchmark::State& state) {
     state.SetLabel("memory_resource : monotonic + unsynchronized_pool + thread_pool");
@@ -81,4 +82,5 @@ BENCHMARK(BM_PmrPoolThreadPool_ForkCreationAndDestruction)
     ->Arg(5000000)
     ->Arg(7000000)
     ->Arg(10000000)
-    ->MinWarmUpTime(5.0);
+    ->UseRealTime()
+    ->MinWarmUpTime(3.0);
