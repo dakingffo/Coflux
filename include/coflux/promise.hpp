@@ -675,12 +675,12 @@ namespace coflux {
 			return task_type(std::coroutine_handle<promise>::from_promise(*this));
 		}
 
-		auto await_transform(detail::context_t) noexcept {
-			return detail::context_awaiter<Ownership>{this, memo_, scheduler<void>(scheduler_)};
+		auto await_transform(detail::get_scheduler_t) noexcept {
+			return detail::get_scheduler_awaiter<scheduler_type>{};
 		}
 
-		auto await_transform(detail::get_scheduler_awaiter<scheduler<void>>&& awaiter) noexcept {
-			return detail::get_scheduler_awaiter<scheduler_type>{};
+		auto await_transform(detail::context_t) noexcept {
+			return detail::context_awaiter<Ownership>{this, memo_, scheduler<void>(scheduler_)};
 		}
 
 		template <awaitable Awaiter>

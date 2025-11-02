@@ -261,7 +261,7 @@ namespace coflux {
             std::pmr::memory_resource* memo_ = nullptr;
         };
 
-        template <schedulable Scheduler = scheduler<void>>
+        template <schedulable Scheduler>
         struct get_scheduler_awaiter : public nonsuspend_awaiter_base {
             get_scheduler_awaiter()  = default;
             ~get_scheduler_awaiter() = default;
@@ -287,6 +287,8 @@ namespace coflux {
 
             Scheduler* scheduler_ = nullptr;
         };
+
+        struct get_scheduler_t {};
 
         template <bool Ownership>
         struct context_awaiter : public nonsuspend_awaiter_base, ownership_tag<Ownership> {
@@ -317,6 +319,38 @@ namespace coflux {
         };
 
         struct context_t {};
+
+        template <schedulable Scheduler>
+        struct spawn_environment_awaiter : public nonsuspend_awaiter_base {
+            static_assert(!std::same_as<Scheduler, scheduler<void>>, "Can't spawn environment to envrionment<scheduler<void>>.");
+
+            using scheduler_type = Scheduler;
+
+            spawn_environment_awaiter()  = default;
+            ~spawn_environment_awaiter() = default;
+
+            spawn_environment_awaiter(const spawn_environment_awaiter&)            = delete;
+            spawn_environment_awaiter(spawn_environment_awaiter&&)                 = default;
+            spawn_environment_awaiter& operator=(const spawn_environment_awaiter&) = delete;
+            spawn_environment_awaiter& operator=(spawn_environment_awaiter&&)      = default;
+
+            bool await_ready() const noexcept {
+                return false;
+            }
+
+            template <typename Promise>
+            bool await_suspend(std::coroutine_handle<Promise> handle) noexcept {
+                auto& promise = handle.promise();
+                env_.emplace(promise.memo_, promise.scheduler_.template to<Scheduler>());
+                return false;
+            }
+
+            auto await_resume() const noexcept {
+                return std::move(env_).value();
+            }
+
+            std::optional<environment<scheduler_type>> env_;
+        };
 
         namespace debug {
             template <bool Ownership>
@@ -478,11 +512,16 @@ namespace coflux {
     }
 
     inline auto get_scheduler() noexcept {
-        return detail::get_scheduler_awaiter{};
+        return detail::get_scheduler_t{};
     }
 
     inline auto context() noexcept {
         return detail::context_t{};
+    }
+
+    template <schedulable Scheduler>
+    inline auto spawn_environment() noexcept {
+        return detail::spawn_environment_awaiter<Scheduler>{};
     }
 }
 
