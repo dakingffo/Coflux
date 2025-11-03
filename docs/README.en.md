@@ -1,7 +1,11 @@
 # Coflux: Coroutines Conflux
 
-[](https://isocpp.org/std/the-standard)
-[](https://opensource.org/licenses/MIT)
+[![C++](https://img.shields.io/badge/C++-20-blue.svg?logo=cplusplus)](https://isocpp.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+![GCC](https://img.shields.io/badge/GCC-green?logo=gcc)
+![Clang](https://img.shields.io/badge/Clang-orange?logo=llvm)
+​![MSVC](https://img.shields.io/badge/MSVC-blue?logo=visualstudio)
 
 *A C++20 coroutine framework for building statically-defined, high-performance concurrent systems*
 

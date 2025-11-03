@@ -13,7 +13,6 @@ using PipelineScheduler = coflux::scheduler<PipelineExecutor>;
 // --- Pipeline Stage ---
 // Recursive definition for pipeline stages
 coflux::fork<long long, PipelineExecutor> pipeline_stage(auto&& ctx, long long value, int CurrentDepth, int MaxDepth) {
-    // std::cout << "_";
     // Simulate some minimal work
     long long result = value + 1;
     if (CurrentDepth < MaxDepth) {

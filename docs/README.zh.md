@@ -1,7 +1,11 @@
 # Coflux：Coroutines Conflux
 
-[![C++20](https://img.shields.io/badge/C++-20-blue.svg)](https://isocpp.org/std/the-standard)
+[![C++](https://img.shields.io/badge/C++-20-blue.svg?logo=cplusplus)](https://isocpp.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+![GCC](https://img.shields.io/badge/GCC-green?logo=gcc)
+![Clang](https://img.shields.io/badge/Clang-orange?logo=llvm)
+​![MSVC](https://img.shields.io/badge/MSVC-blue?logo=visualstudio)
 
 *一个用于构建静态定义、高性能并发系统的C++20协程框架*
 <br>
