@@ -51,15 +51,17 @@ namespace coflux {
 			while (running_) {
 				queue_cv_.wait(lock, [this] { return !queue_.empty() || !running_; });
 				if (!running_) break;
-				while (!queue_.empty() && queue_.top().first <= clock::now()) {
+				while (running_ && !queue_.empty() && queue_.top().first <= clock::now()) {
 					auto task_package = queue_.top();
 					queue_.pop();
 					lock.unlock();
 					task_package.second();
 					lock.lock();
 				}
+
 				if (running_ && !queue_.empty()) {
-					queue_cv_.wait_until(lock, queue_.top().first);
+					auto next_timepoint = queue_.top().first;
+					queue_cv_.wait_until(lock, next_timepoint);
 				}
 			}
 		}
@@ -71,7 +73,7 @@ namespace coflux {
 
 		void shutdown() {
 			if (running_.exchange(false)) {
-				queue_cv_.notify_all();
+				queue_cv_.notify_one();
 				if (scheduler_thread_.joinable()) {
 					scheduler_thread_.join();
 				}

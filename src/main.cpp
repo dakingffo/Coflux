@@ -85,27 +85,29 @@ int main() {
         }
         std::cout << std::endl;
         {
-            auto get_user_id = [](int x) { return x * 2; };
-            auto get_user_name = [](auto&&, coflux::fork_view<int> id) -> coflux::fork<std::string, task_executor> {
-                co_return "User" + std::to_string(co_await id);
+            // 构建a->b->c且a->c的有向无环图图
+            auto DAG_task_lambda = [](auto&&) -> coflux::task<void, task_executor> {
+                std::cout << "Dag task starting find user's names by their ids...\n";
+                auto get_user_id_lambda = [](int x) { return x * 2; };
+                auto get_user_name_fork = [](auto&&, coflux::fork_view<int> id) -> coflux::fork<std::string, task_executor> {
+                    co_return "User" + std::to_string(co_await id);
                 };
 
-            // 构建a->b->c且a->c的有向无环图图
-            auto DAG_task = [&](auto&&) -> coflux::task<void, task_executor> {
-                std::cout << "Dag task starting find user's names by their ids...\n";
                 auto&& my_env = co_await coflux::context();
-                auto&& get_user_id_fork = coflux::make_fork<task_executor>(get_user_id, my_env);
+                auto&& get_user_id_fork = coflux::make_fork<task_executor>(get_user_id_lambda, my_env);
                 for (int x = 0; x < 5; x++) {
                     auto id = get_user_id_fork(x).get_view();
-                    std::cout << co_await(id) << " : " << co_await(get_user_name(my_env, id)) << '\n';
+                    std::cout << co_await(id) << " : " << co_await(get_user_name_fork(my_env, id)) << '\n';
                 }
-                }(coflux::make_environment(coflux::scheduler{ task_executor{ 3 } }))
-                    .then([]() {
+                };
+            DAG_task_lambda(coflux::make_environment(coflux::scheduler{ task_executor{ 3 } }))
+                .then([]() {
                         std::cout << "This is a DAG demo!\n";
                         })
-                    .on_void([]() {
+                .on_void([]() {
                         std::cout << "B get C by view!\n";
-                        });
+                        })
+                .join();
         }
 
     }
@@ -128,7 +130,7 @@ int main() {
     std::cout << "\n--- 3. Demonstrating A Task Range then using when(n) to parse Async operations into a Sync scope. ---\n";
     {
         auto env = coflux::make_environment(coflux::scheduler{ task_executor{3} });
-        auto print_nums = [](auto&)->coflux::task<int, task_executor> {
+        auto print_nums = [](auto&)->coflux::task<void, task_executor> {
             auto&& env = co_await coflux::context();
             std::vector<coflux::fork<int, task_executor>> vec;
             for (int i = 0; i < 10; i++) {

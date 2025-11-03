@@ -5,123 +5,11 @@
 #ifndef COFLUX_PROMISE_HPP
 #define COFLUX_PROMISE_HPP
 
-#include "awaiter.hpp"
+#include "result.hpp"
 #include "channel.hpp"
-#include "this_coroutine.hpp"
 
 namespace coflux {
 	namespace detail {
-		template <typename Ty>
-		struct result {
-			using value_type = Ty;
-			using error_type = std::exception_ptr;
-
-			result() : error_(nullptr), st_(running) {}
-			~result() {
-				if (st_.load(std::memory_order_acquire) == completed) {
-					value_.~value_type();
-				}
-			}
-
-			result(const result&)			 = delete;
-			result(result&&)				 = delete;
-			result& operator=(const result&) = delete;
-			result& operator=(result&&)		 = delete;
-
-			template <typename Ref>
-			void emplace_value(Ref&& ref) noexcept(std::is_nothrow_constructible_v<value_type, Ref>) {
-				new (std::addressof(value_)) value_type(std::forward<Ref>(ref));
-				st_.store(completed, std::memory_order_release);
-			}
-
-			void emplace_error(error_type&& err) noexcept {
-				new (std::addressof(error_)) error_type(std::move(err));
-				st_.store(failed, std::memory_order_release);
-			}
-
-			void emplace_cancel(cancel_exception&& err) noexcept {
-				new (std::addressof(error_)) error_type(std::make_exception_ptr(std::move(err)));
-				st_.store(cancelled, std::memory_order_release);
-			}
-
-			std::atomic<status>& get_status() noexcept {
-				return st_;
-			}
-
-			const value_type& value()const& {
-				try_throw();
-				return value_;
-			}
-
-			value_type&& value()&& {
-				try_throw();
-				return std::move(value_);
-			}
-
-			const error_type& error()const& {
-				return error_;
-			}
-
-			void try_throw() const {
-				if (st_.load(std::memory_order_acquire) != completed)
-					COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-					std::rethrow_exception(error_);
-				}
-			}
-
-			std::atomic<status> st_;
-			union {
-				value_type value_;
-				error_type error_;
-			};
-		};
-
-		template <>
-		struct result<void> {
-			using value_type = void;
-			using error_type = std::exception_ptr;
-
-			result() : error_(nullptr), st_(running) {}
-			~result() = default;
-
-			result(const result&)            = delete;
-			result(result&&)                 = delete;
-			result& operator=(const result&) = delete;
-			result& operator=(result&&)      = delete;
-
-			void emplace_void() noexcept {
-				st_.store(completed, std::memory_order_release);
-			}
-
-			void emplace_error(error_type&& err) noexcept {
-				error_ = std::move(err);
-				st_.store(failed, std::memory_order_release);
-			}
-
-			void emplace_cancel(cancel_exception&& err) noexcept {
-				error_ = std::make_exception_ptr(std::move(err));
-				st_.store(cancelled, std::memory_order_release);
-			}
-
-			std::atomic<status>& get_status() noexcept {
-				return st_;
-			}
-
-			const error_type& error()const& {
-				return error_;
-
-			}
-
-			void try_throw() {
-				if (st_.load(std::memory_order_acquire) != completed)
-					COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-					std::rethrow_exception(error_);
-				}
-			}
-
-			std::atomic<status> st_;
-			error_type error_;
-		};
 		//						 BasicTask										Generator
 		//	
 		//					 promise_fork_base				            	promise_yield_base
@@ -198,13 +86,20 @@ namespace coflux {
 					final_sem_.acquire();
 				}
 			}
+			
+			void final_semaphore_release() noexcept {
+				bool expected = false;
+				if (this->already_final_.compare_exchange_strong(expected, true, std::memory_order_release)) {
+					this->final_sem_.release();
+				}
+			}
 
 			std::atomic_bool      already_final_ = false;
 			std::binary_semaphore final_sem_{ 0 };
 			std::stop_source      stop_source_;
 			handle_type           children_head_   = nullptr;
 
-			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) brother_handle			  brothers_next_ {};
+			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) brother_handle	brothers_next_{};
 
 			cancellaton_callback_type cancellation_callback_;
 
@@ -230,32 +125,24 @@ namespace coflux {
 			promise_result_base() = default;
 			~promise_result_base() override = default;
 
-			void invoke_callbacks_then_release_semaphore() {
-				invoke_callbacks();
-				bool expected = false;
-				if (this->already_final_.compare_exchange_strong(expected, true, std::memory_order_relaxed)) {
-					this->final_sem_.release();
-				}
-			}
-
 			void unhandled_exception() noexcept {
 				result_.emplace_error(std::current_exception());
 				std::atomic_signal_fence(std::memory_order_seq_cst);
-				invoke_callbacks_then_release_semaphore();
+				invoke_callbacks();
 			}
 
 			template <typename Ret>
 			void return_value(Ret&& value) noexcept(std::is_nothrow_constructible_v<value_type, Ret>) {
 				result_.emplace_value(std::forward<Ret>(value));
 				std::atomic_signal_fence(std::memory_order_seq_cst);
-				invoke_callbacks_then_release_semaphore();
+				invoke_callbacks();
 			}
 
 			void cancel() noexcept {
 				result_.emplace_cancel(cancel_exception(Ownership));
 				this->stop_source_.request_stop();
 				std::atomic_signal_fence(std::memory_order_seq_cst);
-				invoke_callbacks_then_release_semaphore();
+				invoke_callbacks();
 			}
 
 			const value_type& get_result()& {
@@ -363,31 +250,23 @@ namespace coflux {
 			promise_result_base() = default;
 			~promise_result_base() override = default;
 
-			void invoke_callbacks_then_release_semaphore() {
-				invoke_callbacks();
-				bool expected = false;
-				if (this->already_final_.compare_exchange_strong(expected, true, std::memory_order_seq_cst)) {
-					this->final_sem_.release();
-				}
-			}
-
 			void unhandled_exception() noexcept {
 				result_.emplace_error(std::current_exception());
 				std::atomic_signal_fence(std::memory_order_seq_cst);
-				invoke_callbacks_then_release_semaphore();
+				invoke_callbacks();
 			}
 
 			void return_void() noexcept {
 				result_.emplace_void();
 				std::atomic_signal_fence(std::memory_order_seq_cst);
-				invoke_callbacks_then_release_semaphore();
+				invoke_callbacks();
 			}
 
 			void cancel() noexcept {
 				result_.emplace_cancel(cancel_exception(Ownership));
 				this->stop_source_.request_stop();
 				std::atomic_signal_fence(std::memory_order_seq_cst);
-				invoke_callbacks_then_release_semaphore();
+				invoke_callbacks();
 			}
 
 			void get_result() {
@@ -483,34 +362,30 @@ namespace coflux {
 		template <typename Ty>
 		struct promise_yield_base {
 			using value_type  = Ty;
-			using yield_proxy = std::optional<Ty>;
+			using yield_proxy = result<Ty>;
+
+			promise_yield_base() : product_(unprepared) {}
+			~promise_yield_base() = default;
 
 			void unhandled_exception() noexcept {
-				error_ = std::current_exception();
-				status_ = failed;
+				product_.emplace_error(std::current_exception());
 			}
 
 			template <typename Ref>
 			std::suspend_always yield_value(Ref&& value) noexcept(std::is_nothrow_constructible_v<value_type, Ref>) {
-				product_.emplace(std::forward<Ref>(value));
-				status_ = suspending;
+				product_.replace_value(std::forward<Ref>(value));
 				return {};
 			}
 
 			void return_void() noexcept {
-				status_ = completed;
+				product_.st_.store(completed, std::memory_order_relaxed);
 			}
 
 			value_type&& get_value() {
-				if (error_) {
-					std::rethrow_exception(error_);
-				}
-				return std::move(product_).value();
+				return std::move(product_).yield();
 			}
 
-			std::exception_ptr		  error_;
-			std::optional<value_type> product_;
-			status					  status_;
+			yield_proxy product_;
 		};
 
 		template <typename Ty, simple_awaitable Initial, simple_awaitable Final, bool TaskLikePromise, bool Ownership>
@@ -741,7 +616,7 @@ namespace coflux {
 
 		auto await_transform(detail::cancel_awaiter<Ownership>&& awaiter) noexcept {
 			result_base::cancel();
-			return detail::callback_awaiter{};
+			return detail::final_awaiter{};
 		}
 
 		template <typename T, std::size_t N>
@@ -779,13 +654,12 @@ namespace coflux {
 	template <typename Ty>
 	struct promise<generator<Ty>> final
 		: public detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false> {
-		using base = detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false>;
+		using base           = detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false>;
 		using value_type     = typename base::value_type;
 		using yield_proxy    = typename base::yield_proxy;
 		using generator_type = generator<Ty>;
 
-		promise() noexcept {
-			this->status_ = suspending;
+		promise(){
 			ptr_.active = this;
 		}
 
@@ -793,14 +667,20 @@ namespace coflux {
 			return generator_type(std::coroutine_handle<promise>::from_promise(*this));
 		}
 
-		bool has_value() const noexcept {
-			return this->product_.has_value();
+		status get_status() noexcept {
+			return this->product_.get_status().load(std::memory_order_relaxed);
+		}
+
+		bool has_value() noexcept {
+			status st = get_status();
+			return st == completed || st == suspending;
 		}
 
 		using base::yield_value;
 
 		std::suspend_always yield_value(generator_type&& subgenerator) {
 			promise* new_active = &(subgenerator.handle_.promise());
+			subgenerator.handle_ = nullptr;
 			has_new_sub_ = true;
 			if (ptr_.active == this) {
 				ptr_.active = new_active;
@@ -814,12 +694,12 @@ namespace coflux {
 			return {};
 		}
 
+		bool has_new_sub_ = false;
+
 		union {
 			promise* active;
 			promise* next;
 		} ptr_;
-
-		bool has_new_sub_ = false;
 	};
 }
 

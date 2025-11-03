@@ -170,16 +170,15 @@ namespace coflux {
             std::atomic<status>* waiter_status_ = nullptr;
         };
 
-        struct callback_awaiter {
-            constexpr bool await_ready() const noexcept { return false; }
+        struct final_awaiter {
+            bool await_ready() const noexcept { return false; }
 
             template <typename Promise>
-            constexpr void await_suspend(std::coroutine_handle<Promise> handle) const noexcept {
-                //std::atomic_signal_fence(std::memory_order_seq_cst);
-                //handle.promise().invoke_callbacks_then_release_semaphore();
+            void await_suspend(std::coroutine_handle<Promise> handle) const noexcept {
+                handle.promise().final_semaphore_release();
             }
 
-            constexpr void await_resume() const noexcept {}
+            void await_resume() const noexcept {}
         };
     }
 

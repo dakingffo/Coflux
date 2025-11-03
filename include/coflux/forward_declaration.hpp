@@ -66,6 +66,7 @@ namespace coflux {
 		failed,
 		cancelled,
 		handled,
+		unprepared,
 		invalid
 	};
 
@@ -111,7 +112,7 @@ namespace coflux {
 
 		struct maysuspend_awaiter_base;
 
-		struct callback_awaiter;
+		struct final_awaiter;
 	}
 
 #undef  COFLUX_AWAITABLE_CONCEPTS
@@ -206,7 +207,7 @@ namespace coflux {
 			executive_or_certain_executor Executor,
 			schedulable Scheduler,
 			simple_awaitable Initial,
-			simple_awaitable Final,
+			awaitable Final,
 			bool Ownership>
 		class basic_task;
 
@@ -246,12 +247,12 @@ namespace coflux {
 	};
 
 	template <typename Ty, executive_or_certain_executor Executor, schedulable Scheduler>
-	struct is_fork_lrvalue<detail::basic_task<Ty, Executor, Scheduler, std::suspend_never, detail::callback_awaiter, false>&> {
+	struct is_fork_lrvalue<detail::basic_task<Ty, Executor, Scheduler, std::suspend_never, detail::final_awaiter, false>&> {
 		static constexpr bool value = true;
 	};
 
 	template <typename Ty, executive_or_certain_executor Executor, schedulable Scheduler>
-	struct is_fork_lrvalue<detail::basic_task<Ty, Executor, Scheduler, std::suspend_never, detail::callback_awaiter, false>> {
+	struct is_fork_lrvalue<detail::basic_task<Ty, Executor, Scheduler, std::suspend_never, detail::final_awaiter, false>> {
 		static constexpr bool value = true;
 	};
 
@@ -267,7 +268,7 @@ namespace coflux {
 	};
 
 	template <typename Ty, executive_or_certain_executor Executor, schedulable Scheduler>
-	struct is_task_rvalue<detail::basic_task<Ty, Executor, Scheduler, std::suspend_never, detail::callback_awaiter, true>> {
+	struct is_task_rvalue<detail::basic_task<Ty, Executor, Scheduler, std::suspend_never, detail::final_awaiter, true>> {
 		static constexpr bool value = true;
 	};
 

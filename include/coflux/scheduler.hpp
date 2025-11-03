@@ -25,7 +25,9 @@ namespace coflux {
 			auto find = [tuple_ptr, index]<std::size_t...Is>(std::index_sequence<Is...>) -> void* {
 				auto& tuple = *static_cast<std::tuple<Executors...>*>(tuple_ptr);
 				void* res = nullptr;
-				((Is == index ? (res = &std::get<Is>(tuple), true) : false) || ...);
+				COFLUX_ATTRIBUTES(COFLUX_MAYBE_UNUSED) bool _ = (
+					(Is == index ? (res = &std::get<Is>(tuple), true) : false) || ...
+				);
 				return res;
 			};
 			return find(std::make_index_sequence<sizeof...(Executors)>{});
@@ -35,8 +37,10 @@ namespace coflux {
 			auto find = [tuple_ptr, index]<std::size_t...Is>(std::index_sequence<Is...>) -> void* {
 				auto& tuple = *static_cast<std::tuple<Executors...>*>(tuple_ptr);
 				void* res = nullptr;
-				(((typeid(std::remove_reference_t<std::tuple_element_t<Is, std::tuple<Executors...>>>)) == index ?
-					(res = &std::get<Is>(tuple), true) : false) || ...);
+				COFLUX_ATTRIBUTES(COFLUX_MAYBE_UNUSED) bool _ = (
+					((typeid(std::remove_reference_t<std::tuple_element_t<Is, std::tuple<Executors...>>>)) == index ?
+					(res = &std::get<Is>(tuple), true) : false) || ...
+				);
 				return res;
 			};
 			return find(std::make_index_sequence<sizeof...(Executors)>{});

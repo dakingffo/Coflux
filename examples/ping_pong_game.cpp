@@ -26,7 +26,7 @@ coflux::fork<void, coflux::noop_executor> player(auto&&, std::string name, coflu
 		}
 	}
 	if (winner) {
-		std::cout << name << " Win!";
+		std::cout << name << " Win!\n";
 	}
 }
 

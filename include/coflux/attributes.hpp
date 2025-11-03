@@ -23,6 +23,12 @@
 #	define COFLUX_DEPRECATED_BECAUSE(reason) 
 #endif
 
+#if COFLUX_HAS_ATTRIBUTE(maybe_unused)
+#	define COFLUX_MAYBE_UNUSED              [[maybe_unused]]
+#else
+#	define COFLUX_MAYBE_UNUSED                 
+#endif
+
 #if COFLUX_HAS_ATTRIBUTE(nodiscard) 
 #   define COFLUX_NODISCARD				    [[nodiscard]]
 #	define COFLUX_NODISCARD_BECAUSE(reason) [[nodiscard(reason)]]

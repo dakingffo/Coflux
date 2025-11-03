@@ -57,10 +57,11 @@ TEST(StructureTest, ExceptionPropagation) {
         co_return;
         };
 
-    auto catcher_task = [&](auto&&) -> coflux::task<void, TestExecutor, TestScheduler> {
+    auto lambda = [&](auto&&) -> coflux::task<void, TestExecutor, TestScheduler> {
         // co_await一个会抛异常的fork
         co_await throwing_fork(co_await coflux::context());
-        }(env);
+        };
+    auto catcher_task = lambda(env);
     // get_result() 应该重新抛出子fork的异常
     EXPECT_THROW(catcher_task.get_result(), std::runtime_error);
 }
@@ -87,14 +88,17 @@ coflux::task<void, TestExecutor, TestScheduler> recursion_task(auto&& env, std::
     co_await recursion_fork(co_await coflux::context(), cnt);
 }
 
+
 TEST(StructureTest, TaskForkRecursion) {
     std::atomic<int> cnt = 0;
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{}, coflux::timer_executor{} });
     
-    recursion_task(env, cnt).join();
+    auto task = recursion_task(env, cnt);
+    task.join();
 
     EXPECT_EQ(cnt.load(), 5);
 }
+
 
 TEST(StructureTest, CancellationIsPropagated) {
     std::atomic<bool> fork_was_cancelled = false;
@@ -109,14 +113,16 @@ TEST(StructureTest, CancellationIsPropagated) {
         }
         };
 
-    auto parent_task = [&](auto&& env) -> coflux::task<int, TestExecutor, TestScheduler> {
+    auto launch = [&](auto&& env) -> coflux::task<int, TestExecutor, TestScheduler> {
         // 启动子fork
         cancellable_fork(co_await coflux::context(), fork_was_cancelled);
         // 在子fork完成前，主动取消自己
         co_await std::chrono::milliseconds(50);
         co_await coflux::this_task::cancel();
         co_return 1; // 不可达
-        }(env);
+        };
+
+    auto parent_task = launch(env);
 
     EXPECT_NO_THROW(parent_task.join()); // join被取消的协程不会抛处取消异常
     EXPECT_THROW(parent_task.get_result(), coflux::cancel_exception); // get_result被取消的协程会抛出取消异常

@@ -81,7 +81,7 @@ namespace coflux {
 		generator(coroutine_handle handle = nullptr) noexcept 
 			: handle_(handle) {}
 		~generator() {
-			if (handle_ && handle_.promise().ptr_.active == &handle_.promise()) {
+			if (handle_) {
 				handle_.destroy();
 			}
 		}
@@ -133,7 +133,7 @@ namespace coflux {
 		}
 
 		status get_status() const noexcept {
-			return handle_ ? handle_.promise().status_ : invalid;
+			return handle_ ? handle_.promise().get_status() : invalid;
 		}
 
 		iterator begin() const noexcept {
@@ -163,7 +163,7 @@ namespace coflux {
 		void Resume_active() {
 			promise_type& main_promise = handle_.promise();
 			promise_type*& now_active = main_promise.ptr_.active;
-			if (now_active->status_ != completed) {
+			if (now_active->get_status() != completed) {
 				std::coroutine_handle<promise_type>::from_promise(*now_active).resume();
 				while (now_active->ptr_.next == &main_promise && main_promise.has_new_sub_ || now_active->has_new_sub_) {
 					if (now_active->ptr_.next != &main_promise) {
@@ -179,9 +179,9 @@ namespace coflux {
 					std::coroutine_handle<promise_type>::from_promise(*now_active).resume();
 				}
 			}
-			while (now_active != &main_promise && now_active->status_ == completed) {
-				if (now_active->error_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-					std::rethrow_exception(now_active->error_);
+			while (now_active != &main_promise && now_active->get_status() == completed) {
+				if (now_active->get_status() == failed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+					std::rethrow_exception(now_active->product_.error());
 				}
 				promise_type* next_active = now_active->ptr_.next;
 				std::coroutine_handle<promise_type>::from_promise(*now_active).destroy();
@@ -194,7 +194,7 @@ namespace coflux {
 			promise_type& main_promise = handle_.promise();
 			promise_type*& now_active = main_promise.ptr_.active;
 			if (&main_promise != now_active) {
-				main_promise.product_.emplace(now_active->get_value());
+				main_promise.product_.replace_value(now_active->get_value());
 			}
 		}
 

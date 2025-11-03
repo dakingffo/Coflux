@@ -15,7 +15,7 @@ namespace coflux {
 			executive_or_certain_executor Executor,
 			schedulable Scheduler,
 			simple_awaitable Initial,
-			simple_awaitable Final,
+			awaitable Final,
 			bool Ownership>
 		class COFLUX_ATTRIBUTES(COFLUX_NODISCARD) basic_task {
 		public:
@@ -34,9 +34,13 @@ namespace coflux {
 			explicit basic_task(handle_type handle = nullptr) noexcept : handle_(handle) {}
 			~basic_task() {
 				if constexpr (Ownership) {
-					Nothrow_join();
-					Join_forks();
-					Destroy();
+					if (handle_) {
+						Nothrow_join();
+						std::atomic_signal_fence(std::memory_order_seq_cst);
+						Join_forks();
+						std::atomic_signal_fence(std::memory_order_seq_cst);
+						Destroy();
+					}
 				}
 			}
 
@@ -48,20 +52,24 @@ namespace coflux {
 			}
 			basic_task& operator=(basic_task && another) noexcept {
 				if (this != &another) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					if (handle_) {
-						handle_.destroy();
-					}
+					basic_task scapegoat = std::move(*this);
 					handle_ = std::exchange(another.handle_, nullptr);
 				}
 				return *this;
 			}
 
 			decltype(auto) get_result()& {
+				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+					Null_handle_error();
+				}
 				Nothrow_join();
 				return handle_.promise().get_result();
 			}
 
 			decltype(auto) get_result()&& {
+				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+					Null_handle_error();
+				}
 				Nothrow_join();
 				return std::move(handle_.promise()).get_result();
 			}
@@ -86,7 +94,9 @@ namespace coflux {
 			}
 
 			void join() {
-				Nothrow_join();
+				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
+					Nothrow_join();
+				}
 				if (get_status() == failed) {
 					handle_.promise().try_throw();
 				}
@@ -220,22 +230,16 @@ namespace coflux {
 			friend struct ::coflux::awaiter;
 
 			void Nothrow_join() {
-				if (handle_) {
-					handle_.promise().final_semaphore_acquire();
-				}
+				handle_.promise().final_semaphore_acquire();
 			}
 
 			void Join_forks() {
-				if (handle_) {
-					handle_.promise().join_forks();
-				}
+				handle_.promise().join_forks();
 			}
 
 			void Destroy() {
-				if (handle_) {
-					handle_.destroy();
-					handle_ = nullptr;
-				}
+				handle_.destroy();
+				handle_ = nullptr;
 			}
 
 			template <typename Func>
@@ -262,10 +266,10 @@ namespace coflux {
 
 	template <typename Ty, executive_or_certain_executor Executor = noop_executor,
 		schedulable Scheduler = scheduler<typename executor_traits<Executor>::executor_type>>
-		using task = detail::basic_task<Ty, Executor, Scheduler, std::suspend_never, detail::callback_awaiter, true>;
+		using task = detail::basic_task<Ty, Executor, Scheduler, std::suspend_never, detail::final_awaiter, true>;
 
 	template <typename Ty, executive_or_certain_executor Executor = noop_executor>
-	using fork = detail::basic_task<Ty, Executor, scheduler<void>, std::suspend_never, detail::callback_awaiter, false>;
+	using fork = detail::basic_task<Ty, Executor, scheduler<void>, std::suspend_never, detail::final_awaiter, false>;
 
 	template <typename Ty>
 	class COFLUX_ATTRIBUTES(COFLUX_NODISCARD) fork_view {
@@ -336,7 +340,7 @@ namespace coflux {
 		}
 
 	private:
-		template <typename, executive_or_certain_executor, schedulable, simple_awaitable, simple_awaitable, bool>
+		template <typename, executive_or_certain_executor, schedulable, simple_awaitable, awaitable, bool>
 		friend class detail::basic_task;
 		template <typename TaskType>
 		friend struct promise;
@@ -349,9 +353,7 @@ namespace coflux {
 		}
 
 		void Nothrow_join() {
-			if (handle_) {
-				handle_.promise().final_semaphore_acquire();
-			}
+			handle_.promise().final_semaphore_acquire();
 		}
 
 		template <typename Func>

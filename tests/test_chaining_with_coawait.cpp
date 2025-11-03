@@ -3,7 +3,7 @@
 #include <coflux/executor.hpp>
 #include <atomic>
 #include <string>
-/* fixing bugs...
+
 using TestExecutor = coflux::thread_pool_executor<>;
 using TestScheduler = coflux::scheduler<TestExecutor>;
 
@@ -39,7 +39,7 @@ TEST(ChainingWithCoAwait, ForkOnValue) {
     std::atomic<bool> callback_executed = false;
     std::string callback_value;
 
-    auto test_task = [&](auto env) -> coflux::task<std::string, TestExecutor, TestScheduler> {
+    auto launch = [&](auto env) -> coflux::task<std::string, TestExecutor, TestScheduler> {
         // co_await 一个 fork，并链式调用 on_value
         auto fork_ref = success_fork(co_await coflux::context());
 
@@ -58,8 +58,9 @@ TEST(ChainingWithCoAwait, ForkOnValue) {
         EXPECT_EQ(callback_value, "ForkSuccess");
 
         co_return result;
-        }(env);
-
+        };
+    
+    auto test_task = launch(env);
     test_task.join();
 }
 
@@ -70,7 +71,7 @@ TEST(ChainingWithCoAwait, TaskMoveOnValueSuccess) {
     std::atomic<bool> error_callback_executed = false;
     int callback_value = 0;
 
-    auto test_task = [&](auto env) -> coflux::task<int, TestExecutor, TestScheduler> {
+    auto launch = [&](auto env) -> coflux::task<int, TestExecutor, TestScheduler> {
         auto result = co_await success_task(env) // co_await 右值 task
             .on_value([&](int v) {
             value_callback_executed = true;
@@ -86,8 +87,9 @@ TEST(ChainingWithCoAwait, TaskMoveOnValueSuccess) {
         EXPECT_FALSE(error_callback_executed);
 
         co_return result;
-        }(env);
-
+        };
+    
+    auto test_task = launch(env);
     test_task.join();
 }
 
@@ -98,7 +100,7 @@ TEST(ChainingWithCoAwait, TaskMoveOnErrorFailure) {
     std::atomic<bool> error_callback_executed = false;
     std::atomic<bool> co_await_threw = false;
 
-    auto test_task = [&](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {
+    auto launch = [&](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {
         try {
             auto result = co_await error_task(env) // co_await 右值 task
                 .on_value([&](int v) {
@@ -125,8 +127,9 @@ TEST(ChainingWithCoAwait, TaskMoveOnErrorFailure) {
         EXPECT_FALSE(value_callback_executed); // 成功回调未执行
 
         co_return;
-        }(env);
-
+        };
+    
+    auto test_task = launch(env);
     test_task.join(); // join 不应抛出，因为错误在内部被catch，且on_error处理了
 }
 
@@ -136,7 +139,7 @@ TEST(ChainingWithCoAwait, VoidTaskOnVoidSuccess) {
     std::atomic<bool> void_callback_executed = false;
     std::atomic<bool> error_callback_executed = false;
 
-    auto test_task = [&](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {
+    auto launch = [&](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {
         // co_await 返回 void 时，不能赋值给 auto
         co_await void_success_task(env)
             .on_void([&]() { // on_void 回调
@@ -151,8 +154,8 @@ TEST(ChainingWithCoAwait, VoidTaskOnVoidSuccess) {
         EXPECT_FALSE(error_callback_executed);
 
         co_return;
-        }(env);
-
+        };
+    
+    auto test_task = launch(env);
     test_task.join();
 }
-*/
