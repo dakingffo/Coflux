@@ -230,7 +230,7 @@ namespace coflux {
 			friend struct ::coflux::awaiter;
 
 			void Nothrow_join() {
-				handle_.promise().final_semaphore_acquire();
+				handle_.promise().final_latch_wait();
 			}
 
 			void Join_forks() {
@@ -353,7 +353,7 @@ namespace coflux {
 		}
 
 		void Nothrow_join() {
-			handle_.promise().final_semaphore_acquire();
+			handle_.promise().final_latch_wait();
 		}
 
 		template <typename Func>

@@ -175,7 +175,7 @@ namespace coflux {
 
             template <typename Promise>
             void await_suspend(std::coroutine_handle<Promise> handle) const noexcept {
-                handle.promise().final_semaphore_release();
+                handle.promise().final_latch_count_down();
             }
 
             void await_resume() const noexcept {}

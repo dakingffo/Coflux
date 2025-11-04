@@ -89,7 +89,7 @@ namespace coflux {
 			using base			   = channel_writer<Channel>;
 			using value_type       = typename base::value_type;
 			using channel_ptr	   = typename base::channel_ptr;
-			using executor_traits  = executor_traits<Executor>;
+			using executor_traits  = ::coflux::executor_traits<Executor>;
 			using executor_type    = typename executor_traits::executor_type;
 			using executor_pointer = typename executor_traits::executor_pointer;
 
@@ -151,7 +151,7 @@ namespace coflux {
 			using base			   = channel_reader<Channel>;
 			using value_type       = typename base::value_type;
 			using channel_ptr      = typename base::channel_ptr;
-			using executor_traits  = executor_traits<Executor>;
+			using executor_traits  = ::coflux::executor_traits<Executor>;
 			using executor_type    = typename executor_traits::executor_type;
 			using executor_pointer = typename executor_traits::executor_pointer;
 

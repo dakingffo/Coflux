@@ -40,8 +40,7 @@ namespace coflux {
         void await_suspend(std::coroutine_handle<Promise> handle) {
             continuation_.store(handle);
             auto callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_]
-                <std::size_t I>(const auto & const_fork_result) {
-                auto& fork_result = const_cast<std::remove_cvref_t<decltype(const_fork_result)>&>(const_fork_result);
+                <std::size_t I>(auto& fork_result) {
                 std::size_t expected = -1;
                 if (result->first.compare_exchange_strong(expected, I, std::memory_order_acq_rel)) {
                     if (fork_result.get_status().load(std::memory_order_acquire) != completed)
@@ -64,8 +63,7 @@ namespace coflux {
             };
 
             auto void_callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_]
-                <std::size_t I>(const auto & const_fork_result) {
-                auto& fork_result = const_cast<std::remove_cvref_t<decltype(const_fork_result)>&>(const_fork_result);
+                <std::size_t I>(auto& fork_result) {
                 std::size_t expected = -1;
                 if (result->first.compare_exchange_strong(expected, I, std::memory_order_acq_rel)) {
                     if (fork_result.get_status().load(std::memory_order_acquire) != completed)
@@ -96,12 +94,12 @@ namespace coflux {
                             stop_source.request_stop();
                         });
                     if constexpr (std::is_void_v<typename std::remove_reference_t<std::tuple_element_t<I, task_type>>::value_type>) {
-                        fork.On_result([cb = void_callback](const auto& res) {
+                        fork.On_result([cb = void_callback](auto& res) {
                             cb.template operator() < I > (std::forward<decltype(res)>(res));
                             });
                     }
                     else {
-                        fork.On_result([cb = callback](const auto& res) {
+                        fork.On_result([cb = callback](auto& res) {
                             cb.template operator() < I > (std::forward<decltype(res)>(res));
                             });
                     }
@@ -172,8 +170,7 @@ namespace coflux {
         void await_suspend(std::coroutine_handle<Promise> handle) {
             continuation_.store(handle);
             auto callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
-                <std::size_t I>(const auto & const_basic_task_result) {
-                auto& basic_task_result = const_cast<std::remove_cvref_t<decltype(const_basic_task_result)>&>(const_basic_task_result);
+                <std::size_t I>(auto& basic_task_result) {
                 if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
                     COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     std::lock_guard<std::mutex> lock(mtx);
@@ -198,8 +195,7 @@ namespace coflux {
             };
 
             auto void_callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
-                <std::size_t I>(const auto & const_basic_task_result) {
-                auto& basic_task_result = const_cast<std::remove_cvref_t<decltype(const_basic_task_result)>&>(const_basic_task_result);
+                <std::size_t I>(auto& basic_task_result) {
                 if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
                     COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     std::lock_guard<std::mutex> lock(mtx);
@@ -232,12 +228,12 @@ namespace coflux {
                             stop_source.request_stop();
                         });
                     if constexpr (std::is_void_v<typename std::remove_reference_t<std::tuple_element_t<I, task_type>>::value_type>) {
-                        basic_task.On_result([cb = void_callback](const auto& res) {
+                        basic_task.On_result([cb = void_callback](auto& res) {
                             cb.template operator() < I > (std::forward<decltype(res)>(res));
                             });
                     }
                     else {
-                        basic_task.On_result([cb = callback](const auto& res) {
+                        basic_task.On_result([cb = callback](auto& res) {
                             cb.template operator() < I > (std::forward<decltype(res)>(res));
                             });
                     }
@@ -301,10 +297,10 @@ namespace coflux {
         }
         ~awaiter() {};
 
-        awaiter(const awaiter&) = delete;
-        awaiter(awaiter&&) = default;
+        awaiter(const awaiter&)            = delete;
+        awaiter(awaiter&&)                 = default;
         awaiter& operator=(const awaiter&) = delete;
-        awaiter& operator=(awaiter&&) = default;
+        awaiter& operator=(awaiter&&)      = default;
 
         bool await_ready() const noexcept {
             return false;
@@ -315,8 +311,7 @@ namespace coflux {
             n_ = std::min(n_, (std::size_t)std::ranges::distance(basic_tasks_));
             continuation_.store(handle);
             auto callback = [handle, n = n_, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
-            (const auto& const_basic_task_result) {
-                auto& basic_task_result = const_cast<std::remove_cvref_t<decltype(const_basic_task_result)>&>(const_basic_task_result);
+            (auto& basic_task_result) {
                 std::size_t current_count = result->first.fetch_add(1, std::memory_order_acq_rel) + 1;
                 bool try_resume_from_this = false;
                 if (current_count > n) {
@@ -349,8 +344,7 @@ namespace coflux {
                 };
 
             auto void_callback = [handle, n = n_, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
-            (const auto& const_basic_task_result) {
-                auto& basic_task_result = const_cast<std::remove_cvref_t<decltype(const_basic_task_result)>&>(const_basic_task_result);
+            (auto& basic_task_result) {
                 std::size_t current_count = result->first.fetch_add(1, std::memory_order_acq_rel) + 1;
                 bool try_resume_from_this = false;
                 if (current_count > n) {

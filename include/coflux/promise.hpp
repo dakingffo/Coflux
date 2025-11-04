@@ -44,7 +44,7 @@ namespace coflux {
 				while (fork) {
 					auto& fork_promise = fork.promise();
 					next = fork_promise.brothers_next_;
-					fork_promise.final_semaphore_acquire();
+					fork_promise.final_latch_wait();
 					fork_promise.join_forks();
 					fork = next;
 				}
@@ -81,23 +81,17 @@ namespace coflux {
 #endif
 			}
 
-			void final_semaphore_acquire() noexcept {
-				if (already_final_.load(std::memory_order_acquire) == false) {
-					final_sem_.acquire();
-				}
+			void final_latch_wait() noexcept {
+				final_latch_.wait();
 			}
 			
-			void final_semaphore_release() noexcept {
-				bool expected = false;
-				if (this->already_final_.compare_exchange_strong(expected, true, std::memory_order_release)) {
-					this->final_sem_.release();
-				}
+			void final_latch_count_down() noexcept {
+				final_latch_.count_down();
 			}
 
-			std::atomic_bool      already_final_ = false;
-			std::binary_semaphore final_sem_{ 0 };
-			std::stop_source      stop_source_;
-			handle_type           children_head_   = nullptr;
+			std::latch       final_latch_{1};
+			std::stop_source stop_source_;
+			handle_type      children_head_   = nullptr;
 
 			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) brother_handle	brothers_next_{};
 
@@ -119,8 +113,9 @@ namespace coflux {
 			using fork_base     = promise_fork_base<Ownership>;
 			using result_proxy  = result<Ty>;
 			using value_type    = typename result_proxy::value_type;
+			using error_type    = typename result_proxy::error_type;
 			using result_type   = Ty;
-			using callback_type = std::function<void(const result_proxy&)>;
+			using callback_type = std::function<void(result_proxy&)>;
 
 			promise_result_base() = default;
 			~promise_result_base() override = default;
@@ -182,7 +177,7 @@ namespace coflux {
 			template <typename Func>
 			void then(Func&& func) {
 				emplace_or_invoke_callback(
-					[func = std::forward<Func>(func)](const result_proxy& res) {
+					[func = std::forward<Func>(func)](result_proxy& res) {
 						//std::cout << "reach then\n";
 						func();
 					});
@@ -191,10 +186,10 @@ namespace coflux {
 			template <typename Func>
 			void on_value(Func&& func) {
 				emplace_or_invoke_callback(
-					[func = std::forward<Func>(func)](const result_proxy& res) {
+					[func = std::forward<Func>(func)](result_proxy& res) {
 						if (res.st_.load(std::memory_order_relaxed) == completed) {
 							//std::cout << "reach on_value\n";
-							func(res.value());
+							func(value_type(res.value()));
 						}
 					});
 			}
@@ -202,11 +197,11 @@ namespace coflux {
 			template <typename Func>
 			void on_error(Func&& func) {
 				emplace_or_invoke_callback(
-					[func = std::forward<Func>(func)](const result_proxy& res) {
+					[func = std::forward<Func>(func)](result_proxy& res) {
 						if (res.st_.load(std::memory_order_relaxed) == failed) {
 							//std::cout << "reach on_error\n";
-							func(res.error());
-							const_cast<result_proxy&>(res).st_.store(handled, std::memory_order_release);
+							func(error_type(res.error()));
+							res.st_.store(handled, std::memory_order_release);
 						}
 					});
 			}
@@ -214,11 +209,11 @@ namespace coflux {
 			template <typename Func>
 			void on_cancel(Func&& func) {
 				emplace_or_invoke_callback(
-					[func = std::forward<Func>(func)](const result_proxy& res) {
+					[func = std::forward<Func>(func)](result_proxy& res) {
 						if (res.st_.load(std::memory_order_relaxed) == cancelled) {
 							//std::cout << "reach on_cancel\n";
 							func();
-							const_cast<result_proxy&>(res).st_.store(handled, std::memory_order_release);
+							res.st_.store(handled, std::memory_order_release);
 						}
 					});
 			}
@@ -244,8 +239,9 @@ namespace coflux {
 			using fork_base     = promise_fork_base<Ownership>;
 			using result_proxy  = result<void>;
 			using value_type    = typename result_proxy::value_type;
+			using error_type    = typename result_proxy::error_type;
 			using result_type   = std::monostate;
-			using callback_type = std::function<void(const result_proxy&)>;
+			using callback_type = std::function<void(result_proxy&)>;
 
 			promise_result_base() = default;
 			~promise_result_base() override = default;
@@ -302,7 +298,7 @@ namespace coflux {
 			template <typename Func>
 			void then(Func&& func) {
 				emplace_or_invoke_callback(
-					[func = std::forward<Func>(func)](const result_proxy& res) {
+					[func = std::forward<Func>(func)](result_proxy& res) {
 						//std::cout << "reach then\n";
 						func();
 					});
@@ -311,7 +307,7 @@ namespace coflux {
 			template <typename Func>
 			void on_void(Func&& func) {
 				emplace_or_invoke_callback(
-					[func = std::forward<Func>(func)](const result_proxy& res) {
+					[func = std::forward<Func>(func)](result_proxy& res) {
 						if (res.st_.load(std::memory_order_relaxed) == completed) {
 							//std::cout << "reach on_void\n";
 							func();
@@ -322,11 +318,11 @@ namespace coflux {
 			template <typename Func>
 			void on_error(Func&& func) {
 				emplace_or_invoke_callback(
-					[func = std::forward<Func>(func)](const result_proxy& res) {
+					[func = std::forward<Func>(func)](result_proxy& res) {
 						if (res.st_.load(std::memory_order_relaxed) == failed) {
 							//std::cout << "reach on_error\n";
-							func(res.error());
-							const_cast<result_proxy&>(res).st_.store(handled, std::memory_order_release);
+							func(error_type(res.error()));
+							res.st_.store(handled, std::memory_order_release);
 						}
 					});
 			}
@@ -334,11 +330,11 @@ namespace coflux {
 			template <typename Func>
 			void on_cancel(Func&& func) {
 				emplace_or_invoke_callback(
-					[func = std::forward<Func>(func)](const result_proxy& res) {
+					[func = std::forward<Func>(func)](result_proxy& res) {
 						if (res.st_.load(std::memory_order_relaxed) == cancelled) {
 							//std::cout << "reach on_cancel\n";
 							func();
-							const_cast<result_proxy&>(res).st_.store(handled, std::memory_order_release);
+							res.st_.store(handled, std::memory_order_release);
 						}
 					});
 			}
@@ -397,6 +393,7 @@ namespace coflux {
 			using result_base  = promise_result_base<Ty, Ownership>;
 			using fork_base    = typename result_base::fork_base;
 			using value_type   = typename result_base::value_type;
+			using error_type   = typename result_base::error_type;
 			using result_proxy = typename result_base::result_proxy;
 			using result_type  = typename result_base::result_type;
 
@@ -429,6 +426,7 @@ namespace coflux {
 		using result_base      = typename base::result_base;
 		using fork_base        = typename base::fork_base;
 		using value_type       = typename base::value_type;
+		using error_type       = typename base::error_type;
 		using result_proxy     = typename base::result_proxy;
 		using result_type      = typename base::result_type;
 		using task_type        = detail::basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>;

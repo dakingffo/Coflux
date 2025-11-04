@@ -203,7 +203,7 @@ namespace coflux {
 
 		void shut_down() {
 			bool expected = true;
-			if (running_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
+			if (running_.compare_exchange_strong(expected, false, std::memory_order_seq_cst)) {
 				for (std::size_t i = 0; i < thread_size_threshold_; i++) {
 					task_queue_.enqueue(std::coroutine_handle<>());
 				}

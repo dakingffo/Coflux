@@ -71,8 +71,8 @@ int main() {
         // 创建一个顶层task来管理一组并发连接
         {
             using task_scheduler = coflux::scheduler<coflux::thread_pool_executor<>, coflux::timer_executor>;
-            auto env = coflux::make_environment<task_scheduler>(coflux::thread_pool_executor<>{1}, coflux::timer_executor{});
-            auto server_task = [](auto& env) -> coflux::task<void, task_executor, task_scheduler> {
+            auto env = coflux::make_environment<task_scheduler>();
+            auto server_task = [](auto&) -> coflux::task<void, task_executor, task_scheduler> {
                 std::cout << "Server task starting 3 concurrent connections...\n";
                 co_await coflux::when_all(
                     handle_connection(co_await coflux::context(), 1),
@@ -85,7 +85,7 @@ int main() {
         }
         std::cout << std::endl;
         {
-            // 构建a->b->c且a->c的有向无环图图
+            // 构建a->b->c且a->c的有向无环图
             auto DAG_task_lambda = [](auto&&) -> coflux::task<void, task_executor> {
                 std::cout << "Dag task starting find user's names by their ids...\n";
                 auto get_user_id_lambda = [](int x) { return x * 2; };
@@ -108,6 +108,7 @@ int main() {
                         std::cout << "B get C by view!\n";
                         })
                 .join();
+            // 手动join
         }
 
     }
