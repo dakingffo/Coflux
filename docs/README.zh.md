@@ -167,4 +167,4 @@ target_link_libraries(your_target PRIVATE coflux)
 
 ## 许可证
 
-Coflux 使用 [MIT License](./LICENSE) 授权。
+Coflux 使用 [MIT License](../LICENSE.txt) 授权。

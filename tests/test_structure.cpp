@@ -30,7 +30,7 @@ TEST(StructureTest, TaskDestructorJoinsChildren) {
     // 将task的生命周期限制在一个独立的块作用域内
     {
         auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 2 }, coflux::timer_executor{} });
-        auto parent_task = [](auto&& env) -> coflux::task<void, TestExecutor, TestScheduler> {
+        auto parent_task = [](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {
             // 创建两个子fork，但不显式等待它们
             // counted_fork会立即开始执行
             counted_fork(co_await coflux::context());
@@ -57,7 +57,7 @@ TEST(StructureTest, ExceptionPropagation) {
         co_return;
         };
 
-    auto lambda = [&](auto&&) -> coflux::task<void, TestExecutor, TestScheduler> {
+    auto lambda = [&](auto) -> coflux::task<void, TestExecutor, TestScheduler> {
         // co_await一个会抛异常的fork
         co_await throwing_fork(co_await coflux::context());
         };
@@ -113,7 +113,7 @@ TEST(StructureTest, CancellationIsPropagated) {
         }
         };
 
-    auto launch = [&](auto&& env) -> coflux::task<int, TestExecutor, TestScheduler> {
+    auto launch = [&](auto env) -> coflux::task<int, TestExecutor, TestScheduler> {
         // 启动子fork
         cancellable_fork(co_await coflux::context(), fork_was_cancelled);
         // 在子fork完成前，主动取消自己
@@ -145,7 +145,7 @@ TEST(StructureTest, TaskDestructorWaitsForGrandchildren) {
     g_fork_lifetime_counter = 0;
     {
         auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 2 }, coflux::timer_executor{} });
-        auto parent_task = [](auto&& env) -> coflux::task<void, TestExecutor, TestScheduler> {
+        auto parent_task = [](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {
             // 启动一个子 fork (nested_parent_fork)
             // nested_parent_fork 内部会启动 counted_fork (孙辈)
             nested_parent_fork(co_await coflux::context());
@@ -168,7 +168,7 @@ TEST(StructureTest, TaskWaitsForDetachedSiblingsAfterWhenAll) {
     g_fork_lifetime_counter = 0;
     {
         auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 3 }, coflux::timer_executor{} });
-        auto parent_task = [](auto&& env) -> coflux::task<void, TestExecutor, TestScheduler> {
+        auto parent_task = [](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {
             auto ctx = co_await coflux::context();
 
             auto fork_a = [](auto&&)->coflux::fork<void, TestExecutor> { co_await std::chrono::milliseconds(10); }(ctx);
@@ -205,7 +205,7 @@ TEST(StructureTest, DestructorWaitsForSiblingsOnError) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 2 }, coflux::timer_executor{} });
 
     {
-        auto parent_task = [](auto&& env) -> coflux::task<void, TestExecutor, TestScheduler> {
+        auto parent_task = [](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {
             auto&& ctx = co_await coflux::context();
 
             // 启动一个会抛异常的 fork
@@ -243,7 +243,7 @@ TEST(StructureTest, DestructorWaitsForCancelledChildren) {
     g_fork_lifetime_counter = 0;
     {
         auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 3 }, coflux::timer_executor{} });
-        auto parent_task = [](auto&& env) -> coflux::task<void, TestExecutor, TestScheduler> {
+        auto parent_task = [](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {
             auto ctx = co_await coflux::context();
 
             // 启动3个长耗时的 fork

@@ -72,7 +72,7 @@ int main() {
         {
             using task_scheduler = coflux::scheduler<coflux::thread_pool_executor<>, coflux::timer_executor>;
             auto env = coflux::make_environment<task_scheduler>();
-            auto server_task = [](auto&) -> coflux::task<void, task_executor, task_scheduler> {
+            auto server_task = [](auto) -> coflux::task<void, task_executor, task_scheduler> {
                 std::cout << "Server task starting 3 concurrent connections...\n";
                 co_await coflux::when_all(
                     handle_connection(co_await coflux::context(), 1),
@@ -86,7 +86,7 @@ int main() {
         std::cout << std::endl;
         {
             // 构建a->b->c且a->c的有向无环图
-            auto DAG_task_lambda = [](auto&&) -> coflux::task<void, task_executor> {
+            auto DAG_task_lambda = [](auto) -> coflux::task<void, task_executor> {
                 std::cout << "Dag task starting find user's names by their ids...\n";
                 auto get_user_id_lambda = [](int x) { return x * 2; };
                 auto get_user_name_fork = [](auto&&, coflux::fork_view<int> id) -> coflux::fork<std::string, task_executor> {
@@ -131,7 +131,7 @@ int main() {
     std::cout << "\n--- 3. Demonstrating A Task Range then using when(n) to parse Async operations into a Sync scope. ---\n";
     {
         auto env = coflux::make_environment(coflux::scheduler{ task_executor{3} });
-        auto print_nums = [](auto&)->coflux::task<void, task_executor> {
+        auto print_nums = [](auto)->coflux::task<void, task_executor> {
             auto&& env = co_await coflux::context();
             std::vector<coflux::fork<int, task_executor>> vec;
             for (int i = 0; i < 10; i++) {

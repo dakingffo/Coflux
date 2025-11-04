@@ -174,4 +174,4 @@ We will finalize the CONTRIBUTING document in the near future\! More information
 
 ## License
 
-Coflux is licensed under the [MIT License](./LICENSE).
+Coflux is licensed under the [MIT License](./LICENSE.txt).

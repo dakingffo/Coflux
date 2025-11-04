@@ -220,11 +220,7 @@ namespace coflux {
             maysuspend_awaiter_base::await_suspend();
             std::atomic_signal_fence(std::memory_order_acquire);
             task_.then([exec = executor_, handle]() {
-                if (handle.promise().get_status().load(std::memory_order_relaxed) == suspending) {
-                    //std::cout << "reach then {handle.resume()}\n";
                     executor_traits::execute(exec, handle);
-                }
-                //std::cout << "reach then after {handle.resume()}\n";
                 });
             return true;
         }

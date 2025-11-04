@@ -12,11 +12,11 @@ coflux::fork<std::string, TestExecutor> success_fork(auto&&) {
     co_return "ForkSuccess";
 }
 
-coflux::task<int, TestExecutor, TestScheduler> success_task(auto&& env) {
+coflux::task<int, TestExecutor, TestScheduler> success_task(auto env) {
     co_return 42;
 }
 
-coflux::task<void, TestExecutor, TestScheduler> void_success_task(auto&& env) {
+coflux::task<void, TestExecutor, TestScheduler> void_success_task(auto env) {
     co_return;
 }
 
@@ -25,7 +25,7 @@ coflux::fork<void, TestExecutor> error_fork(auto&&) {
     co_return;
 }
 
-coflux::task<int, TestExecutor, TestScheduler> error_task(auto&& env) {
+coflux::task<int, TestExecutor, TestScheduler> error_task(auto env) {
     throw std::runtime_error("TaskError");
     co_return -1;
 }

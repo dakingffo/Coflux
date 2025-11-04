@@ -68,23 +68,23 @@ namespace coflux {
 
 		void init_thread() {
 			running_ = true;
-			scheduler_thread_ = std::thread(&timer_thread::run, this);
+			thread_ = std::thread(&timer_thread::run, this);
 		}
 
 		void shutdown() {
 			if (running_.exchange(false)) {
 				queue_cv_.notify_one();
-				if (scheduler_thread_.joinable()) {
-					scheduler_thread_.join();
+				if (thread_.joinable()) {
+					thread_.join();
 				}
 			}
 		}
 
+		std::atomic_bool        running_ = false;
+		std::condition_variable queue_cv_;
+		std::thread             thread_;
 		package_queue           queue_;
 		std::mutex              queue_mtx_;
-		std::condition_variable queue_cv_;
-		std::thread             scheduler_thread_;
-		std::atomic_bool        running_ = false;
 	};
 }
 

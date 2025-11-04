@@ -556,6 +556,17 @@ namespace coflux {
 			return detail::context_awaiter<Ownership>{this, memo_, scheduler<void>(scheduler_)};
 		}
 
+		template <typename Rep, typename Period>
+		auto await_transform(const std::chrono::duration<Rep, Period>& sleep_time) noexcept {
+			return detail::sleep_awaiter<Executor>(/* Capture executor in awaite_suspend */
+				std::chrono::duration_cast<std::chrono::milliseconds>(sleep_time), &(this->get_status()));
+		}
+
+		auto await_transform(detail::cancel_awaiter<Ownership>&& awaiter) noexcept {
+			result_base::cancel();
+			return detail::final_awaiter{};
+		}
+
 		template <awaitable Awaiter>
 			requires (!std::is_base_of_v<detail::limited_tag, std::remove_reference_t<Awaiter>>)
 		decltype(auto) await_transform(Awaiter&& awaiter) noexcept {
@@ -604,17 +615,6 @@ namespace coflux {
 		auto await_transform(detail::when_n_pair<Range>&& when_n) noexcept {
 			return awaiter<detail::when_n_pair<Range>, executor_type>(when_n.first.n_,
 				std::forward<Range>(when_n.second), executor_, &(this->get_status()));
-		}
-
-		template <typename Rep, typename Period>
-		auto await_transform(const std::chrono::duration<Rep, Period>& sleep_time) noexcept {
-			return detail::sleep_awaiter<executor_type>(executor_,
-				std::chrono::duration_cast<std::chrono::milliseconds>(sleep_time), &(this->get_status()));
-		}
-
-		auto await_transform(detail::cancel_awaiter<Ownership>&& awaiter) noexcept {
-			result_base::cancel();
-			return detail::final_awaiter{};
 		}
 
 		template <typename T, std::size_t N>

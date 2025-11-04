@@ -79,8 +79,8 @@ endif()
 if(COFLUX_BUILD_EXAMPLES)
     message(STATUS "Examples are enabled for Coflux.")
     file(GLOB EXAMPLES "examples/*.cpp")
-    add_executable(coflux_example ${EXAMPLES})
-    target_link_libraries(coflux_example PRIVATE coflux)
+    add_executable(coflux_examples ${EXAMPLES})
+    target_link_libraries(coflux_examples PRIVATE coflux)
 endif()
 
 

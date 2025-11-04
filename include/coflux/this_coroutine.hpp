@@ -134,8 +134,9 @@ namespace coflux {
             using executor_type    = typename executor_traits::executor_type;
             using executor_pointer = typename executor_traits::executor_pointer;
 
-            sleep_awaiter(executor_pointer exec, std::chrono::milliseconds timer, std::atomic<status>* p)
-                : executor_(exec), timer_(timer), maysuspend_awaiter_base{ p } {}
+            sleep_awaiter(std::chrono::milliseconds timer, std::atomic<status>* p)
+                : timer_(timer)
+                , maysuspend_awaiter_base{ p } {}
             ~sleep_awaiter() = default;
 
             sleep_awaiter(const sleep_awaiter&)            = delete;
@@ -150,16 +151,20 @@ namespace coflux {
             template <typename Promise>
             void await_suspend(std::coroutine_handle<Promise> handle) noexcept {
                 maysuspend_awaiter_base::await_suspend();
-                coflux::executor_traits<timer_executor>::execute(&handle.promise().scheduler_.template get<timer_executor>(),
-                    [handle, this]() { executor_traits::execute(executor_, handle); },
-                    timer_);
+                auto& sch = handle.promise().scheduler_;
+                coflux::executor_traits<timer_executor>::execute(
+                    &sch.template get<timer_executor>(),
+                    [handle, target_exec = sch.template get<Executor>()]() mutable { 
+                        executor_traits::execute(&target_exec, handle); 
+                    },
+                    timer_
+                );
             }
 
             void await_resume() noexcept {
                 maysuspend_awaiter_base::await_resume();
             }
 
-            executor_pointer executor_;
             std::chrono::milliseconds timer_;
         };
 
