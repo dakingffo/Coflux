@@ -20,7 +20,7 @@ namespace coflux {
 				if (st == completed) {
 					value_.~value_type();
 				}
-				else if (st == failed || st == cancelled || st == handled){
+				else {
 					error_.~error_type();
 				}
 			}
@@ -37,13 +37,13 @@ namespace coflux {
 				st_.store(completed, std::memory_order_release);
 			}
 
-			void emplace_error(error_type&& err) noexcept {
-				new (std::addressof(error_)) error_type(std::move(err));
+			void emplace_error(const error_type& err) noexcept {
+				new (std::addressof(error_)) error_type(err);
 				st_.store(failed, std::memory_order_release);
 			}
 
-			void emplace_cancel(cancel_exception&& err) noexcept {
-				new (std::addressof(error_)) error_type(std::make_exception_ptr(std::move(err)));
+			void emplace_cancel(cancel_exception&& cancellation) noexcept {
+				new (std::addressof(error_)) error_type(std::make_exception_ptr(std::move(cancellation)));
 				st_.store(cancelled, std::memory_order_release);
 			}
 
@@ -52,24 +52,19 @@ namespace coflux {
 			}
 
 			const value_type& value()const& {
-				try_throw();
 				return value_;
 			}
 
 			value_type&& value()&& {
-				try_throw();
 				return std::move(value_);
 			}
 
-			const error_type& error()const& {
+			const error_type& error()& {
 				return error_;
 			}
 
-			void try_throw() const {
-				if (st_.load(std::memory_order_acquire) != completed)
-					COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-					std::rethrow_exception(error_);
-				}
+			error_type&& error()&& {
+				return std::move(error_);
 			}
 			
 			// only for generator
@@ -104,8 +99,7 @@ namespace coflux {
 
 			result() : error_(nullptr), st_(running) {}
 			~result() {
-				status st = st_.load(std::memory_order_relaxed);
-				if (st == failed || st == cancelled || st == handled){
+				if (st_.load(std::memory_order_relaxed) != completed) {
 					error_.~error_type();
 				}
 			}
@@ -119,13 +113,13 @@ namespace coflux {
 				st_.store(completed, std::memory_order_release);
 			}
 
-			void emplace_error(error_type&& err) noexcept {
-				error_ = std::move(err);
+			void emplace_error(const error_type& err) noexcept {
+				error_ = err;
 				st_.store(failed, std::memory_order_release);
 			}
 
-			void emplace_cancel(cancel_exception&& err) noexcept {
-				error_ = std::make_exception_ptr(std::move(err));
+			void emplace_cancel(cancel_exception&& cancellation) noexcept {
+				error_ = std::make_exception_ptr(std::move(cancellation));
 				st_.store(cancelled, std::memory_order_release);
 			}
 
@@ -133,15 +127,12 @@ namespace coflux {
 				return st_;
 			}
 
-			const error_type& error()const& {
+			const error_type& error()& {
 				return error_;
 			}
 
-			void try_throw() {
-				if (st_.load(std::memory_order_acquire) != completed)
-					COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-					std::rethrow_exception(error_);
-				}
+			error_type&& error()&& {
+				return std::move(error_);
 			}
 
 			std::atomic<status> st_;

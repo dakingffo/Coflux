@@ -23,6 +23,7 @@ namespace coflux {
 
 			using promise_type     = promise<basic_task>;
 			using value_type       = typename promise_type::value_type;
+			using error_type       = typename promise_type::error_type;
 			using result_type      = typename promise_type::result_type;
 			using executor_traits  = typename promise_type::executor_traits;
 			using executor_type    = typename promise_type::executor_type;
@@ -63,6 +64,12 @@ namespace coflux {
 					Null_handle_error();
 				}
 				Nothrow_join();
+				if (get_status() != completed) {
+					if (!this_thread_error_) {
+						this_thread_error_ = std::move(handle_.promise()).get_error(); 
+					}
+					std::rethrow_exception(this_thread_error_);
+				}
 				return handle_.promise().get_result();
 			}
 
@@ -71,6 +78,12 @@ namespace coflux {
 					Null_handle_error();
 				}
 				Nothrow_join();
+				if (get_status() != completed) {
+					if (!this_thread_error_) {
+						this_thread_error_ = std::move(handle_.promise()).get_error(); 
+					}
+					std::rethrow_exception(this_thread_error_);
+				}
 				return std::move(handle_.promise()).get_result();
 			}
 
@@ -98,7 +111,10 @@ namespace coflux {
 					Nothrow_join();
 				}
 				if (get_status() == failed) {
-					handle_.promise().try_throw();
+					if (!this_thread_error_) {
+						this_thread_error_ = std::move(handle_.promise()).get_error(); 
+					}
+					std::rethrow_exception(this_thread_error_);
 				}
 			}
 
@@ -260,7 +276,8 @@ namespace coflux {
 				throw std::runtime_error("Task handle is null.");
 			}
 
-			handle_type handle_ = nullptr;
+			handle_type handle_            = nullptr;
+			error_type  this_thread_error_ = nullptr;
 		};
 	}
 
@@ -291,12 +308,19 @@ namespace coflux {
 
 		decltype(auto) get_result() {
 			Nothrow_join();
+			if (get_status() != completed) {
+				std::exception_ptr error = handle_.promise().get_error(); 
+				std::rethrow_exception(error);
+			}
 			return handle_.promise().get_result();
 		}
 
 		void join() {
 			Nothrow_join();
-			handle_.promise().try_thorw();
+			if (get_status() == failed) {
+				std::exception_ptr error = handle_.promise().get_error(); 
+				std::rethrow_exception(error);
+			}
 		}
 
 		bool done() const noexcept {
@@ -362,6 +386,7 @@ namespace coflux {
 		}
 
 		fork_view(handle_type handle) : handle_(handle) {}
+		
 		handle_type handle_;
 	};
 

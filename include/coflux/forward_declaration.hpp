@@ -60,14 +60,14 @@
 
 namespace coflux {
 	enum status : char {
-		running,
-		suspending,
-		completed,
-		failed,
-		cancelled,
-		handled,
-		unprepared,
-		invalid
+		running,		// coroutine is running
+		suspending,	    // coroutine is suspending
+		completed,		// coroutine co_returned a value
+		failed,			// coroutine throw an exception
+		cancelled,		// coroutine is cancelled
+		handled,		// coroutine invoke on_error after failed
+		unprepared,		// generator have nothing
+		invalid			// handle is nullptr
 	};
 
 	namespace detail {}

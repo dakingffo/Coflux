@@ -148,12 +148,16 @@ namespace coflux {
 				return std::move(result_).value();
 			}
 
-			std::atomic<status>& get_status() noexcept {
-				return result_.get_status();
+			const error_type& get_error()& {
+				return result_.error();
 			}
 
-			void try_throw() {
-				result_.try_throw();
+			error_type&& get_error()&& {
+				return std::move(result_).error();
+			}
+
+			std::atomic<status>& get_status() noexcept {
+				return result_.get_status();
 			}
 
 			template <typename Func>
@@ -266,15 +270,19 @@ namespace coflux {
 			}
 
 			void get_result() {
-				return result_.try_throw();
+				return;
 			}
 
 			std::atomic<status>& get_status() noexcept {
 				return result_.get_status();
 			}
 
-			void try_throw() {
-				result_.try_throw();
+			const error_type& get_error()& {
+				return result_.error();
+			}
+
+			error_type&& get_error()&& {
+				return std::move(result_).error();
 			}
 
 			template <typename Func>

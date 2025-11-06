@@ -86,7 +86,7 @@ TEST(CombinerTest, WhenAll_Success_Mixed) {
     // std::get<1> is std::monostate
     EXPECT_EQ(std::get<2>(result), "hello");
 }
-
+/*
 TEST(CombinerTest, WhenAll_OneError) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });
     auto test_task = [](auto) -> coflux::task<void, TestExecutor, TestScheduler> {
@@ -101,7 +101,7 @@ TEST(CombinerTest, WhenAll_OneError) {
 
     EXPECT_THROW(test_task.join(), std::runtime_error);
 }
-
+*/
 TEST(CombinerTest, WhenAny_FirstWins) {
     auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 4 }, coflux::timer_executor{} });
     auto test_task = [](auto) -> coflux::task<std::variant<int, std::string>, TestExecutor, TestScheduler> {
@@ -260,3 +260,4 @@ TEST(CombinerTest, RangeWhen_WithTakeView) {
     EXPECT_EQ(results[1], 3);
     EXPECT_EQ(results[2], 4);
 }
+

@@ -23,8 +23,7 @@ namespace coflux {
             : forks_(std::move(co_forks))
             , result_(std::make_shared<std::pair<std::atomic_size_t, value_type>>(-1, value_type{}))
             , executor_(exec)
-            , maysuspend_awaiter_base{ p } {
-        }
+            , maysuspend_awaiter_base{ p } {}
         ~awaiter() {};
 
         awaiter(const awaiter&)            = delete;
@@ -37,7 +36,7 @@ namespace coflux {
         }
 
         template <typename Promise>
-        void await_suspend(std::coroutine_handle<Promise> handle) {
+        bool await_suspend(std::coroutine_handle<Promise> handle) {
             continuation_.store(handle);
             auto callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_]
                 <std::size_t I>(auto& fork_result) {
@@ -45,7 +44,7 @@ namespace coflux {
                 if (result->first.compare_exchange_strong(expected, I, std::memory_order_acq_rel)) {
                     if (fork_result.get_status().load(std::memory_order_acquire) != completed)
                         COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-                        error = fork_result.error_;
+                        error = std::move(fork_result).error();
                     }
                     else {
                         result->second.template emplace<I>(std::forward<
@@ -68,7 +67,7 @@ namespace coflux {
                 if (result->first.compare_exchange_strong(expected, I, std::memory_order_acq_rel)) {
                     if (fork_result.get_status().load(std::memory_order_acquire) != completed)
                         COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-                        error = fork_result.error_;
+                        error = std::move(fork_result).error();
                     }
                     else {
                         result->second.template emplace<I>();
@@ -107,14 +106,13 @@ namespace coflux {
                 (set_callback_for_each.template operator() < Is > (), ...);
             };
             set_callback((std::make_index_sequence<N>()));
-            if (result_->first.load(std::memory_order_acquire) != -1) {
-                std::coroutine_handle<> handle_to_resume = continuation_.exchange(nullptr);
-                if (handle_to_resume) {
-                    executor_traits::execute(executor_, handle_to_resume);
-                }
+
+            maysuspend_awaiter_base::await_suspend();
+            if (result_->first.load(std::memory_order_acquire) != -1 && continuation_.exchange(nullptr)) {
+                return false;
             }
             else {
-                maysuspend_awaiter_base::await_suspend();
+                return true;
             }
         }
 
@@ -153,8 +151,7 @@ namespace coflux {
             : basic_tasks_(std::move(co_basic_tasks))
             , result_(std::make_shared<std::pair<std::atomic_size_t, value_type>>(N, value_type{}))
             , executor_(exec)
-            , maysuspend_awaiter_base{ p } {
-        }
+            , maysuspend_awaiter_base{ p } {}
         ~awaiter() {};
 
         awaiter(const awaiter&)            = delete;
@@ -167,7 +164,7 @@ namespace coflux {
         }
 
         template <typename Promise>
-        void await_suspend(std::coroutine_handle<Promise> handle) {
+        bool await_suspend(std::coroutine_handle<Promise> handle) {
             continuation_.store(handle);
             auto callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
                 <std::size_t I>(auto& basic_task_result) {
@@ -175,7 +172,7 @@ namespace coflux {
                     COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     std::lock_guard<std::mutex> lock(mtx);
                     if (!error) {
-                        error = basic_task_result.error_;
+                        error = std::move(basic_task_result).error();
                         stop.request_stop();
                     }
                 }
@@ -200,7 +197,7 @@ namespace coflux {
                     COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     std::lock_guard<std::mutex> lock(mtx);
                     if (!error) {
-                        error = basic_task_result.error_;
+                        error = std::move(basic_task_result).error();
                         stop.request_stop();
                     }
                 }
@@ -242,14 +239,12 @@ namespace coflux {
             };
             set_callback((std::make_index_sequence<N>()));
 
-            if (result_->first.load(std::memory_order_acquire) == 0) {
-                std::coroutine_handle<> handle_to_resume = continuation_.exchange(nullptr);
-                if (handle_to_resume) {
-                    executor_traits::execute(executor_, handle_to_resume);
-                }
+            maysuspend_awaiter_base::await_suspend();
+            if (result_->first.load(std::memory_order_acquire) == 0 && continuation_.exchange(nullptr)) {
+                return false;
             }
             else {
-                maysuspend_awaiter_base::await_suspend();
+                return true;
             }
         }
 
@@ -293,8 +288,7 @@ namespace coflux {
             , basic_tasks_(std::forward<Range>(co_basic_tasks))
             , result_(std::make_shared<std::pair<std::atomic_size_t, value_type>>(0, value_type{}))
             , executor_(exec)
-            , maysuspend_awaiter_base{ p } {
-        }
+            , maysuspend_awaiter_base{ p } {}
         ~awaiter() {};
 
         awaiter(const awaiter&)            = delete;
@@ -307,7 +301,7 @@ namespace coflux {
         }
 
         template <typename Promise>
-        void await_suspend(std::coroutine_handle<Promise> handle) {
+        bool await_suspend(std::coroutine_handle<Promise> handle) {
             n_ = std::min(n_, (std::size_t)std::ranges::distance(basic_tasks_));
             continuation_.store(handle);
             auto callback = [handle, n = n_, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
@@ -324,7 +318,7 @@ namespace coflux {
                 if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
                     COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     if (!error) {
-                        error = basic_task_result.error_;
+                        error = std::move(basic_task_result).error();
                         stop.request_stop();
                     }
                 }
@@ -358,7 +352,7 @@ namespace coflux {
                     COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     std::lock_guard<std::mutex> lock(mtx);
                     if (!error) {
-                        error = basic_task_result.error_;
+                        error = std::move(basic_task_result).error();
                         stop.request_stop();
                     }
                 }
@@ -387,14 +381,12 @@ namespace coflux {
                 }
             }
 
-            if (result_->first.load(std::memory_order_acquire) >= n_) {
-                std::coroutine_handle<> handle_to_resume = continuation_.exchange(nullptr);
-                if (handle_to_resume) {
-                    executor_traits::execute(executor_, handle_to_resume);
-                }
+            maysuspend_awaiter_base::await_suspend();
+            if (result_->first.load(std::memory_order_acquire) >= n_ && continuation_.exchange(nullptr)) {
+                return false;
             }
             else {
-                maysuspend_awaiter_base::await_suspend();
+                return true;
             }
         }
 
