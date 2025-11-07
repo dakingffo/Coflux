@@ -129,6 +129,7 @@
             "inherits": "linux-gcc-base",
             "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
         },
+
         {
             "name": "linux-gcc-release",
             "displayName": "Linux GCC Release",

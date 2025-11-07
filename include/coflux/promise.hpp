@@ -365,8 +365,9 @@ namespace coflux {
 
 		template <typename Ty>
 		struct promise_yield_base {
-			using value_type  = Ty;
 			using yield_proxy = result<Ty>;
+			using value_type  = typename yield_proxy::value_type;
+			using error_type  = typename yield_proxy::error_type;
 
 			promise_yield_base() : product_(unprepared) {}
 			~promise_yield_base() = default;
@@ -385,8 +386,12 @@ namespace coflux {
 				product_.st_.store(completed, std::memory_order_relaxed);
 			}
 
+			error_type get_error() {
+				return product_.error();
+			}
+
 			value_type&& get_value() {
-				return std::move(product_).yield();
+				return std::move(product_).value();
 			}
 
 			yield_proxy product_;
@@ -665,9 +670,8 @@ namespace coflux {
 		using yield_proxy    = typename base::yield_proxy;
 		using generator_type = generator<Ty>;
 
-		promise(){
-			ptr_.active = this;
-		}
+		promise() : active_(this) {}
+		~promise() = default;
 
 		generator_type get_return_object() noexcept {
 			return generator_type(std::coroutine_handle<promise>::from_promise(*this));
@@ -678,8 +682,7 @@ namespace coflux {
 		}
 
 		bool has_value() noexcept {
-			status st = get_status();
-			return st == completed || st == suspending;
+			return get_status() == suspending;
 		}
 
 		using base::yield_value;
@@ -688,14 +691,14 @@ namespace coflux {
 			promise* new_active = &(subgenerator.handle_.promise());
 			subgenerator.handle_ = nullptr;
 			has_new_sub_ = true;
-			if (ptr_.active == this) {
-				ptr_.active = new_active;
-				new_active->ptr_.next = this;
+			if (active_ == this) {
+				active_ = new_active;
+				new_active->next_ = this;
 			}
 			else {
-				promise* my_old_next = ptr_.next;
-				ptr_.next = new_active;
-				new_active->ptr_.next = my_old_next; // temporarily stored here
+				promise* my_old_next = next_;
+				next_ = new_active;
+				new_active->next_ = my_old_next; // temporarily stored here
 			}
 			return {};
 		}
@@ -703,9 +706,9 @@ namespace coflux {
 		bool has_new_sub_ = false;
 
 		union {
-			promise* active;
-			promise* next;
-		} ptr_;
+			promise* active_;
+			promise* next_;
+		};
 	};
 }
 

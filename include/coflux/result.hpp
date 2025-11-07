@@ -17,10 +17,10 @@ namespace coflux {
 			result(const status& st = running) : error_(nullptr), st_(st) {}
 			~result() {
 				status st = st_.load(std::memory_order_relaxed);
-				if (st == completed) {
+				if (st == completed || st == suspending) {
 					value_.~value_type();
 				}
-				else {
+				else if (st != unprepared) {
 					error_.~error_type();
 				}
 			}
@@ -70,19 +70,11 @@ namespace coflux {
 			// only for generator
 			template <typename Ref>
 			void replace_value(Ref&& ref) noexcept(std::is_nothrow_constructible_v<value_type, Ref>) {
-				if (st_.load(std::memory_order_relaxed) != unprepared) {
+				if (st_.load(std::memory_order_relaxed) == suspending) {
 					value_.~value_type();
 				}
 				new (std::addressof(value_)) value_type(std::forward<Ref>(ref));
 				st_.store(suspending, std::memory_order_relaxed);
-			}
-			
-			value_type&& yield()&& {
-				if (st_.load(std::memory_order_relaxed) == failed)
-					COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-					std::rethrow_exception(error_);
-				}
-				return std::move(value_);
 			}
 
 			union {

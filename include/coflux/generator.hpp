@@ -162,15 +162,15 @@ namespace coflux {
 
 		void Resume_active() {
 			promise_type& main_promise = handle_.promise();
-			promise_type*& now_active = main_promise.ptr_.active;
+			promise_type*& now_active = main_promise.active_;
 			if (now_active->get_status() != completed) {
 				std::coroutine_handle<promise_type>::from_promise(*now_active).resume();
-				while (now_active->ptr_.next == &main_promise && main_promise.has_new_sub_ || now_active->has_new_sub_) {
-					if (now_active->ptr_.next != &main_promise) {
-						promise_type* new_active = now_active->ptr_.active;
-						now_active->ptr_.next = new_active->ptr_.next;
+				while (now_active->next_ == &main_promise && main_promise.has_new_sub_ || now_active->has_new_sub_) {
+					if (now_active->next_ != &main_promise) {
+						promise_type* new_active = now_active->active_;
+						now_active->next_ = new_active->next_;
 						now_active->has_new_sub_ = false;
-						new_active->ptr_.next = now_active;
+						new_active->next_ = now_active;
 						now_active = new_active;
 					}
 					else {
@@ -181,18 +181,18 @@ namespace coflux {
 			}
 			while (now_active != &main_promise && now_active->get_status() == completed) {
 				if (now_active->get_status() == failed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-					std::rethrow_exception(now_active->product_.error());
+					std::rethrow_exception(now_active->get_error());
 				}
-				promise_type* next_active = now_active->ptr_.next;
+				promise_type* next_active = now_active->next_;
 				std::coroutine_handle<promise_type>::from_promise(*now_active).destroy();
-				now_active = handle_.promise().ptr_.active = next_active;
+				now_active = handle_.promise().active_ = next_active;
 				std::coroutine_handle<promise_type>::from_promise(*now_active).resume();
 			}
 		}
 
 		void Prepare_value() {
 			promise_type& main_promise = handle_.promise();
-			promise_type*& now_active = main_promise.ptr_.active;
+			promise_type*& now_active = main_promise.active_;
 			if (&main_promise != now_active) {
 				main_promise.product_.replace_value(now_active->get_value());
 			}

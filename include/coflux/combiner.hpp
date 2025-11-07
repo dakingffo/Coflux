@@ -38,6 +38,8 @@ namespace coflux {
         template <typename Promise>
         bool await_suspend(std::coroutine_handle<Promise> handle) {
             continuation_.store(handle);
+            maysuspend_awaiter_base::await_suspend();
+
             auto callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_]
                 <std::size_t I>(auto& fork_result) {
                 std::size_t expected = -1;
@@ -107,7 +109,6 @@ namespace coflux {
             };
             set_callback((std::make_index_sequence<N>()));
 
-            maysuspend_awaiter_base::await_suspend();
             if (result_->first.load(std::memory_order_acquire) != -1 && continuation_.exchange(nullptr)) {
                 return false;
             }
@@ -166,6 +167,8 @@ namespace coflux {
         template <typename Promise>
         bool await_suspend(std::coroutine_handle<Promise> handle) {
             continuation_.store(handle);
+            maysuspend_awaiter_base::await_suspend();
+
             auto callback = [handle, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
                 <std::size_t I>(auto& basic_task_result) {
                 if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
@@ -239,7 +242,6 @@ namespace coflux {
             };
             set_callback((std::make_index_sequence<N>()));
 
-            maysuspend_awaiter_base::await_suspend();
             if (result_->first.load(std::memory_order_acquire) == 0 && continuation_.exchange(nullptr)) {
                 return false;
             }
@@ -304,6 +306,8 @@ namespace coflux {
         bool await_suspend(std::coroutine_handle<Promise> handle) {
             n_ = std::min(n_, (std::size_t)std::ranges::distance(basic_tasks_));
             continuation_.store(handle);
+            maysuspend_awaiter_base::await_suspend();
+
             auto callback = [handle, n = n_, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
             (auto& basic_task_result) {
                 std::size_t current_count = result->first.fetch_add(1, std::memory_order_acq_rel) + 1;
@@ -381,7 +385,6 @@ namespace coflux {
                 }
             }
 
-            maysuspend_awaiter_base::await_suspend();
             if (result_->first.load(std::memory_order_acquire) >= n_ && continuation_.exchange(nullptr)) {
                 return false;
             }

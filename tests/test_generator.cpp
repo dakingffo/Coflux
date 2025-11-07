@@ -2,7 +2,6 @@
 #include <coflux/generator.hpp>
 #include <ranges>
 
-/*
 coflux::generator<int> recursive_gen(int level) {
     if (level > 0) {
         co_yield level * 10;
@@ -52,4 +51,3 @@ TEST(GeneratorTest, ImplicitRecursion) {
     std::vector<int> expected = { 30, 20, 10, 0, 11, 21, 31 };
     ASSERT_EQ(results, expected);
 }
-*/

@@ -64,11 +64,8 @@ namespace coflux {
 					Null_handle_error();
 				}
 				Nothrow_join();
-				if (get_status() != completed) {
-					if (!this_thread_error_) {
-						this_thread_error_ = std::move(handle_.promise()).get_error(); 
-					}
-					std::rethrow_exception(this_thread_error_);
+				if (get_status() != completed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+					std::rethrow_exception(handle_.promise().get_error());
 				}
 				return handle_.promise().get_result();
 			}
@@ -78,24 +75,25 @@ namespace coflux {
 					Null_handle_error();
 				}
 				Nothrow_join();
-				if (get_status() != completed) {
-					if (!this_thread_error_) {
-						this_thread_error_ = std::move(handle_.promise()).get_error(); 
-					}
-					std::rethrow_exception(this_thread_error_);
+				if (get_status() != completed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+					std::rethrow_exception(std::move(handle_.promise()).get_error());
 				}
 				return std::move(handle_.promise()).get_result();
 			}
 
-			 //调用一个basic_task的resume会使的他从他的调度器中恢复执行。
-			 //Calling resume on a basic_task will cause it to resume execution from its executor.
+			void join() {
+				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
+					Nothrow_join();
+				}
+				if (get_status() == failed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+					std::rethrow_exception(handle_.promise().get_error());
+				}
+			}
+
 			void resume() const {
 				if (!handle_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_handle_error();
 				}
-				// 可能有多个线程争抢resume的调用权，所以使用CAS确保只有一个线程能成功将状态从suspending改为running。
-				// There may be multiple threads competing for the right to call resume,
-				// so use CAS to ensure that only one thread can successfully change the status from suspending to running.
 				status expected = suspending;
 				if (handle_.promise().status_.compare_exchange_strong(
 					expected, running, std::memory_order_acq_rel)) {
@@ -103,18 +101,6 @@ namespace coflux {
 						[handle = handle_]() {
 							handle.resume();
 						});
-				}
-			}
-
-			void join() {
-				if (handle_) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
-					Nothrow_join();
-				}
-				if (get_status() == failed) {
-					if (!this_thread_error_) {
-						this_thread_error_ = std::move(handle_.promise()).get_error(); 
-					}
-					std::rethrow_exception(this_thread_error_);
 				}
 			}
 
@@ -277,7 +263,6 @@ namespace coflux {
 			}
 
 			handle_type handle_            = nullptr;
-			error_type  this_thread_error_ = nullptr;
 		};
 	}
 
@@ -308,18 +293,16 @@ namespace coflux {
 
 		decltype(auto) get_result() {
 			Nothrow_join();
-			if (get_status() != completed) {
-				std::exception_ptr error = handle_.promise().get_error(); 
-				std::rethrow_exception(error);
+			if (get_status() != completed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+				std::rethrow_exception(handle_.promise().get_error());
 			}
 			return handle_.promise().get_result();
 		}
 
 		void join() {
 			Nothrow_join();
-			if (get_status() == failed) {
-				std::exception_ptr error = handle_.promise().get_error(); 
-				std::rethrow_exception(error);
+			if (get_status() == failed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+				std::rethrow_exception(handle_.promise().get_error());
 			}
 		}
 
