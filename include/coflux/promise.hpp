@@ -204,7 +204,7 @@ namespace coflux {
 					[func = std::forward<Func>(func)](result_proxy& res) {
 						if (res.st_.load(std::memory_order_relaxed) == failed) {
 							//std::cout << "reach on_error\n";
-							func(error_type(res.error()));
+							func(std::move(res).error());
 							res.st_.store(handled, std::memory_order_release);
 						}
 					});
@@ -329,7 +329,7 @@ namespace coflux {
 					[func = std::forward<Func>(func)](result_proxy& res) {
 						if (res.st_.load(std::memory_order_relaxed) == failed) {
 							//std::cout << "reach on_error\n";
-							func(error_type(res.error()));
+							func(std::move(res).error());
 							res.st_.store(handled, std::memory_order_release);
 						}
 					});

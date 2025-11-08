@@ -65,7 +65,15 @@ namespace coflux {
 				}
 				Nothrow_join();
 				if (get_status() != completed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-					std::rethrow_exception(handle_.promise().get_error());
+					std::exception_ptr error = std::move(handle_.promise()).get_error();
+					if (error) {
+						std::rethrow_exception(error);
+					}
+					else {
+						No_result_error();
+					}
+					// if throw for the first time, throw the explicit error
+					// else call No_result_error.
 				}
 				return handle_.promise().get_result();
 			}
@@ -76,7 +84,15 @@ namespace coflux {
 				}
 				Nothrow_join();
 				if (get_status() != completed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-					std::rethrow_exception(std::move(handle_.promise()).get_error());
+					std::exception_ptr error = std::move(handle_.promise()).get_error();
+					if (error) {
+						std::rethrow_exception(error);
+					}
+					else {
+						No_result_error();
+					}
+					// if throw for the first time, throw the explicit error
+					// else call No_result_error.
 				}
 				return std::move(handle_.promise()).get_result();
 			}
@@ -86,7 +102,12 @@ namespace coflux {
 					Nothrow_join();
 				}
 				if (get_status() == failed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-					std::rethrow_exception(handle_.promise().get_error());
+					std::exception_ptr error = std::move(handle_.promise()).get_error();
+					if (error) {
+						std::rethrow_exception(error);
+					}
+					// only throw the explicit error for the first time
+					// if exception is handled by on_error or the coroutine is cancelled, don't throw
 				}
 			}
 
@@ -116,7 +137,7 @@ namespace coflux {
 			}
 
 			status get_status() const noexcept {
-				return handle_ ? status(handle_.promise().get_status()) : invalid;
+				return handle_ ? handle_.promise().get_status().load(std::memory_order_acquire) : invalid;
 			}
 
 			std::coroutine_handle<> get_handle() const noexcept {
@@ -259,7 +280,11 @@ namespace coflux {
 			}
 
 			COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void Null_handle_error() {
-				throw std::runtime_error("Task handle is null.");
+				throw std::runtime_error("The handle is null.");
+			}
+
+			COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void No_result_error() {
+				throw std::runtime_error("Can't get result because there is an exception.");
 			}
 
 			handle_type handle_            = nullptr;
@@ -294,7 +319,13 @@ namespace coflux {
 		decltype(auto) get_result() {
 			Nothrow_join();
 			if (get_status() != completed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-				std::rethrow_exception(handle_.promise().get_error());
+				std::exception_ptr error = std::move(handle_.promise()).get_error();
+				if (error) {
+					std::rethrow_exception(error);
+				}
+				else {
+					No_result_error();
+				}
 			}
 			return handle_.promise().get_result();
 		}
@@ -302,7 +333,10 @@ namespace coflux {
 		void join() {
 			Nothrow_join();
 			if (get_status() == failed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-				std::rethrow_exception(handle_.promise().get_error());
+				std::exception_ptr error = std::move(handle_.promise()).get_error();
+				if (error) {
+					std::rethrow_exception(error);
+				}
 			}
 		}
 
@@ -366,6 +400,10 @@ namespace coflux {
 		template <typename Func>
 		void Replace_cancellation_callback(std::stop_token && token, Func && cb) {
 			//handle_.promise().cancellation_callback_.emplace(std::move(token), std::move(cb));
+		}
+
+		COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void No_result_error() {
+			throw std::runtime_error("Can't get result because there is an exception.");
 		}
 
 		fork_view(handle_type handle) : handle_(handle) {}

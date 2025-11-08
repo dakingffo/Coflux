@@ -56,7 +56,6 @@ if(COFLUX_BUILD_BENCHMARKS)
     message(STATUS "Using integrated dependency handling for benchmark")
 
     set(BENCHMARK_ENABLE_TESTING OFF)
-        
     FetchContent_Declare(
         googlebenchmark
         URL https://github.com/google/benchmark/archive/refs/tags/v1.8.3.zip
