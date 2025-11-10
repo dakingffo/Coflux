@@ -260,4 +260,3 @@ TEST(CombinerTest, RangeWhen_WithTakeView) {
     EXPECT_EQ(results[1], 3);
     EXPECT_EQ(results[2], 4);
 }
-

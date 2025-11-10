@@ -16,20 +16,21 @@ namespace coflux {
 
 			result(const status& st = running) : error_(nullptr), st_(st) {}
 			~result() {
-				status st = st_.load(std::memory_order_relaxed);
+				status st = st_.load(std::memory_order_acquire);
 				if (st == completed || st == suspending) {
 					value_.~value_type();
 				}
-				else if (st != unprepared) {
+				else if (st == failed || st == cancelled || st == handled) {
+					error_ = nullptr;
 					error_.~error_type();
 				}
 			}
 
-			result(const result&)			 = delete;
-			result(result&&)				 = delete;
+			result(const result&) = delete;
+			result(result&&) = delete;
 			result& operator=(const result&) = delete;
-			result& operator=(result&&)		 = delete;
-			
+			result& operator=(result&&) = delete;
+
 			// only for task/fork
 			template <typename Ref>
 			void emplace_value(Ref&& ref) noexcept(std::is_nothrow_constructible_v<value_type, Ref>) {
@@ -66,7 +67,7 @@ namespace coflux {
 			error_type&& error()&& {
 				return std::move(error_);
 			}
-			
+
 			// only for generator
 			template <typename Ref>
 			void replace_value(Ref&& ref) noexcept(std::is_nothrow_constructible_v<value_type, Ref>) {
@@ -91,13 +92,15 @@ namespace coflux {
 
 			result() : error_(nullptr), st_(running) {}
 			~result() {
-				if (st_.load(std::memory_order_relaxed) != completed) {
+				status st = st_.load(std::memory_order_acquire);
+				if (st == failed || st == cancelled || st == handled) {
+					error_ = nullptr;
 					error_.~error_type();
 				}
 			}
 
-			result(const result&)            = delete;
-			result(result&&)                 = delete;
+			result(const result&)			 = delete;
+			result(result&&)				 = delete;
 			result& operator=(const result&) = delete;
 			result& operator=(result&&)      = delete;
 
@@ -132,5 +135,4 @@ namespace coflux {
 		};
 	}
 }
-
 #endif // !COFLUX_RESULT_HPP

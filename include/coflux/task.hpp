@@ -66,7 +66,7 @@ namespace coflux {
 				Nothrow_join();
 				if (get_status() != completed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					std::exception_ptr error = std::move(handle_.promise()).get_error();
-					if (error) {
+					if (handle_.promise().get_status().exchange(handled) != handled) {
 						std::rethrow_exception(error);
 					}
 					else {
@@ -85,7 +85,7 @@ namespace coflux {
 				Nothrow_join();
 				if (get_status() != completed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					std::exception_ptr error = std::move(handle_.promise()).get_error();
-					if (error) {
+					if (handle_.promise().get_status().exchange(handled) != handled) {
 						std::rethrow_exception(error);
 					}
 					else {
@@ -103,7 +103,7 @@ namespace coflux {
 				}
 				if (get_status() == failed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					std::exception_ptr error = std::move(handle_.promise()).get_error();
-					if (error) {
+					if (handle_.promise().get_status().exchange(handled) != handled) {
 						std::rethrow_exception(error);
 					}
 					// only throw the explicit error for the first time
@@ -320,7 +320,7 @@ namespace coflux {
 			Nothrow_join();
 			if (get_status() != completed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				std::exception_ptr error = std::move(handle_.promise()).get_error();
-				if (error) {
+				if (handle_.promise().get_status().exchange(handled) != handled) {
 					std::rethrow_exception(error);
 				}
 				else {
@@ -334,7 +334,7 @@ namespace coflux {
 			Nothrow_join();
 			if (get_status() == failed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				std::exception_ptr error = std::move(handle_.promise()).get_error();
-				if (error) {
+				if (handle_.promise().get_status().exchange(handled) != handled) {
 					std::rethrow_exception(error);
 				}
 			}

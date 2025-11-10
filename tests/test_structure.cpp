@@ -202,7 +202,7 @@ TEST(StructureTest, DestructorWaitsForSiblingsOnError) {
     // 即使 Task 异常终止，其析构函数也必须等待 CountedFork 完成。
     g_fork_lifetime_counter = 0;
 
-    auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 2 }, coflux::timer_executor{} });
+    auto env = coflux::make_environment(TestScheduler{ TestExecutor{ 1 }, coflux::timer_executor{} });
 
     {
         auto parent_task = [](auto env) -> coflux::task<void, TestExecutor, TestScheduler> {

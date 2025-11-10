@@ -118,7 +118,7 @@ TEST(ChainingWithCoAwait, TaskMoveOnErrorFailure) {
         catch (const std::runtime_error& e) {
             // 这是由于co_await一定会失败，无法完成赋值，所以一定再抛出一次异常
             co_await_threw = true;
-            EXPECT_STREQ(e.what(), "TaskError");
+            EXPECT_STREQ(e.what(), "Can't get result because there is an exception.");
         }
 
         EXPECT_TRUE(co_await_threw);

@@ -46,7 +46,13 @@ namespace coflux {
                 if (result->first.compare_exchange_strong(expected, I, std::memory_order_acq_rel)) {
                     if (fork_result.get_status().load(std::memory_order_acquire) != completed)
                         COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-                        error = std::move(fork_result).error();
+                        std::exception_ptr e = std::move(fork_result).error();
+                        if (fork_result.get_status().exchange(handled) != handled) {
+                            error = e;
+                        }
+                        else {
+                            error = std::make_exception_ptr(std::runtime_error("Can't get result because there is an exception."));
+                        }
                     }
                     else {
                         result->second.template emplace<I>(std::forward<
@@ -69,7 +75,13 @@ namespace coflux {
                 if (result->first.compare_exchange_strong(expected, I, std::memory_order_acq_rel)) {
                     if (fork_result.get_status().load(std::memory_order_acquire) != completed)
                         COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-                        error = std::move(fork_result).error();
+                        std::exception_ptr e = std::move(fork_result).error();
+                        if (fork_result.get_status().exchange(handled) != handled) {
+                            error = e;
+                        }
+                        else {
+                            error = std::make_exception_ptr(std::runtime_error("Can't get result because there is an exception."));
+                        }
                     }
                     else {
                         result->second.template emplace<I>();
@@ -175,7 +187,13 @@ namespace coflux {
                     COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     std::lock_guard<std::mutex> lock(mtx);
                     if (!error) {
-                        error = std::move(basic_task_result).error();
+                        std::exception_ptr e = std::move(basic_task_result).error();
+                        if (basic_task_result.get_status().exchange(handled) != handled) {
+                            error = e;
+                        }
+                        else {
+                            error = std::make_exception_ptr(std::runtime_error("Can't get result because there is an exception."));
+                        }
                         stop.request_stop();
                     }
                 }
@@ -200,7 +218,13 @@ namespace coflux {
                     COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     std::lock_guard<std::mutex> lock(mtx);
                     if (!error) {
-                        error = std::move(basic_task_result).error();
+                        std::exception_ptr e = std::move(basic_task_result).error();
+                        if (basic_task_result.get_status().exchange(handled) != handled) {
+                            error = e;
+                        }
+                        else {
+                            error = std::make_exception_ptr(std::runtime_error("Can't get result because there is an exception."));
+                        }
                         stop.request_stop();
                     }
                 }
@@ -309,7 +333,7 @@ namespace coflux {
             maysuspend_awaiter_base::await_suspend();
 
             auto callback = [handle, n = n_, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
-            (auto& basic_task_result) {
+            (auto& fork_result) {
                 std::size_t current_count = result->first.fetch_add(1, std::memory_order_acq_rel) + 1;
                 bool try_resume_from_this = false;
                 if (current_count > n) {
@@ -319,19 +343,25 @@ namespace coflux {
                     try_resume_from_this = (current_count == n);
                 }
                 std::lock_guard<std::mutex> guard(mtx);
-                if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
+                if (fork_result.get_status().load(std::memory_order_acquire) != completed)
                     COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     if (!error) {
-                        error = std::move(basic_task_result).error();
+                        std::exception_ptr e = std::move(fork_result).error();
+                        if (fork_result.get_status().exchange(handled) != handled) {
+                            error = e;
+                        }
+                        else {
+                            error = std::make_exception_ptr(std::runtime_error("Can't get result because there is an exception."));
+                        }
                         stop.request_stop();
                     }
                 }
                 else {
                     result->second.emplace_back(std::forward<
                         std::conditional_t<std::is_lvalue_reference_v<task_type>,
-                        std::remove_reference_t<decltype(basic_task_result)>&,
-                        std::remove_reference_t<decltype(basic_task_result)>>
-                        >(basic_task_result).value());
+                        std::remove_reference_t<decltype(fork_result)>&,
+                        std::remove_reference_t<decltype(fork_result)>>
+                        >(fork_result).value());
                     if (try_resume_from_this) {
                         std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
                         if (handle_to_resume) {
@@ -342,7 +372,7 @@ namespace coflux {
                 };
 
             auto void_callback = [handle, n = n_, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
-            (auto& basic_task_result) {
+            (auto& fork_result) {
                 std::size_t current_count = result->first.fetch_add(1, std::memory_order_acq_rel) + 1;
                 bool try_resume_from_this = false;
                 if (current_count > n) {
@@ -352,11 +382,17 @@ namespace coflux {
                     try_resume_from_this = (current_count == n);
                 }
                 std::lock_guard<std::mutex> guard(mtx);
-                if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
+                if (fork_result.get_status().load(std::memory_order_acquire) != completed)
                     COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     std::lock_guard<std::mutex> lock(mtx);
                     if (!error) {
-                        error = std::move(basic_task_result).error();
+                        std::exception_ptr e = std::move(fork_result).error();
+                        if (fork_result.get_status().exchange(handled) != handled) {
+                            error = e;
+                        }
+                        else {
+                            error = std::make_exception_ptr(std::runtime_error("Can't get result because there is an exception."));
+                        }
                         stop.request_stop();
                     }
                 }

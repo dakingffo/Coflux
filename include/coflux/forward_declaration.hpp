@@ -65,7 +65,7 @@ namespace coflux {
 		completed,		// coroutine co_returned a value
 		failed,			// coroutine throw an exception
 		cancelled,		// coroutine is cancelled
-		handled,		// coroutine invoke on_error after failed
+		handled,		// coroutine exception_ptr is moved
 		unprepared,		// generator have nothing
 		invalid			// handle is nullptr
 	};
