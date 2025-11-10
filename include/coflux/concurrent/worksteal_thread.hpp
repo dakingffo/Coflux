@@ -111,7 +111,7 @@ namespace coflux {
 				}
 				}
 				Handle_local();
-				Try_steal(run_mode, threads, mt);
+				// Try_steal(run_mode, threads, mt);
 			}
 		}
 
@@ -145,23 +145,6 @@ namespace coflux {
 		}
 
 		void Try_steal(mode run_mode, std::vector<std::unique_ptr<worksteal_thread>>& threads, std::mt19937& mt) noexcept {
-			/*
-			std::size_t fail_counter = 0;
-			while (fail_counter < (run_mode == mode::fixed ? 4 : 6)) {
-				std::size_t idx = (std::size_t)mt() % threads.size();
-				if (threads[idx].get() == this || !threads[idx]->active_.load(std::memory_order_relaxed)) {
-					fail_counter++;
-					continue;
-				}
-				value_type handle = Steal(*threads[idx]);
-				if (handle) {
-					handle.resume();
-				}
-				else {
-					fail_counter++;
-				}
-			}
-			*/
 			std::size_t begin_pos = (std::size_t)mt() % threads.size();
 			for (int i = 0; i < threads.size(); i++) {
 				size_t idx = (i + begin_pos) % threads.size();
@@ -170,8 +153,7 @@ namespace coflux {
 				}
 				value_type handle = nullptr;
 				do {
-					handle = Steal(*threads[idx]);
-					if (handle) {
+					if (handle = Steal(*threads[idx])) {
 						handle.resume();
 					}
 				} while(handle);
