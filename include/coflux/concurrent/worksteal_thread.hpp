@@ -84,15 +84,15 @@ namespace coflux {
 			thread_local std::mt19937 mt(std::random_device{}());
 			auto last_time = std::chrono::high_resolution_clock().now();
 			std::size_t n;
-			for (;; last_time = std::chrono::high_resolution_clock().now()) {
-				if (!running.load(std::memory_order_acquire)) {
+			while (true) {
+				if (!running.load(std::memory_order_acquire)) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					return;
 				}
 
 				switch (run_mode) {
 				case mode::fixed: {
 					n = task_queue.poll_bulk(buffer_, tail_.load(std::memory_order_relaxed), capacity, running);
-					tail_.fetch_add(n, std::memory_order_release);
+					tail_.fetch_add(n, std::memory_order_seq_cst);
 					break;
 				}
 				case mode::cached: {
@@ -105,13 +105,22 @@ namespace coflux {
 						}
 					}
 					else {
-						tail_.fetch_add(n, std::memory_order_release);
+						tail_.fetch_add(n, std::memory_order_seq_cst);
 					}
 					break;
 				}
 				}
-				Handle_local();
-				// Try_steal(run_mode, threads, mt);
+
+				if (running.load(std::memory_order_relaxed)) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
+					if (n) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
+						Handle_local();
+					}
+					Try_steal(threads, mt);
+				}
+
+				if (run_mode == mode::cached) {
+					last_time = std::chrono::high_resolution_clock().now();
+				}
 			}
 		}
 
@@ -120,52 +129,48 @@ namespace coflux {
 			thread_size--;
 			active_ = false;
 		}
-
+		
 		void Handle_local() noexcept {
 			while (true) {
-				std::size_t t = tail_.fetch_sub(1, std::memory_order_relaxed) - 1;
-				std::atomic_thread_fence(std::memory_order_seq_cst);
-				std::size_t h = head_.load(std::memory_order_relaxed);
-
-				if ((long long)(h - t) <= 0) {
+				std::size_t t = tail_.fetch_sub(1, std::memory_order_acq_rel) - 1;
+				std::size_t h = head_.load(std::memory_order_seq_cst);
+				if (h <= t) {
 					if (h == t) {
 						if (!head_.compare_exchange_strong(h, h + 1, std::memory_order_seq_cst, std::memory_order_relaxed)) {
-							tail_.store(t + 1, std::memory_order_relaxed);
+							tail_.store(t + 1, std::memory_order_release);
 							return;
 						}
-						tail_.store(t + 1, std::memory_order_relaxed);
+						tail_.store(t + 1, std::memory_order_release);
 					}
 					buffer_[t & mask].resume();
 				}
 				else {
-					tail_.store(t + 1, std::memory_order_relaxed);
+					tail_.store(t + 1, std::memory_order_release);
 					return;
 				}
 			}
 		}
 
-		void Try_steal(mode run_mode, std::vector<std::unique_ptr<worksteal_thread>>& threads, std::mt19937& mt) noexcept {
-			std::size_t begin_pos = (std::size_t)mt() % threads.size();
-			for (int i = 0; i < threads.size(); i++) {
-				size_t idx = (i + begin_pos) % threads.size();
+		void Try_steal(std::vector<std::unique_ptr<worksteal_thread>>& threads, std::mt19937& mt) noexcept {
+			std::size_t threads_size = threads.size();
+			std::size_t begin_pos = (std::size_t)mt() & (threads_size - 1);
+			for (int i = 0; i < (threads_size >> 1); i++) {
+				size_t idx = (i + begin_pos) & (threads_size - 1);
 				if (threads[idx].get() == this || !threads[idx]->active_.load(std::memory_order_relaxed)) {
 					continue;
 				}
-				value_type handle = nullptr;
-				do {
-					if (handle = Steal(*threads[idx])) {
-						handle.resume();
-					}
-				} while(handle);
+				value_type handle = Steal(*threads[idx]);
+				if (handle) {
+					handle.resume();
+				}
 			}
 		}
 
-		value_type Steal(worksteal_thread& victim) {
-			std::size_t h = victim.head_.load(std::memory_order_acquire);
-			std::atomic_thread_fence(std::memory_order_seq_cst);
+		value_type Steal(worksteal_thread& victim) noexcept {
+			std::size_t h = victim.head_.load(std::memory_order_seq_cst);
 			std::size_t t = victim.tail_.load(std::memory_order_acquire);
 
-			if ((long long)(h - t) < 0) {
+			if (h < t) {
 				if (!victim.head_.compare_exchange_strong(h, h + 1,
 					std::memory_order_seq_cst, std::memory_order_relaxed)) {
 					return nullptr;

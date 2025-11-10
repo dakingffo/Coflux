@@ -32,9 +32,9 @@ namespace coflux {
 			mode             run_mode			   = mode::fixed,								//set mode
 			std::size_t      thread_size_threshold = std::thread::hardware_concurrency() * 2,	//set thread size threshold(when cached)
 			Args&&...        args																//arguments for task queue	
-		)	: basic_thread_size_(basic_thread_size)
+		)	: basic_thread_size_(size_upper(basic_thread_size))
 			, mode_(run_mode)
-			, thread_size_threshold_(thread_size_threshold) 
+			, thread_size_threshold_(size_upper(thread_size_threshold)) 
 			, task_queue_(std::forward<Args>(args)...) {
 			run();
 		}
@@ -82,7 +82,7 @@ namespace coflux {
 		}
 
 		void submit(std::coroutine_handle<> handle) {
-			if (!running_.load(std::memory_order_acquire)) {
+			if (!running_.load(std::memory_order_acquire)) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				Submit_error();
 			}
 			task_queue_.emplace(handle);
@@ -167,9 +167,9 @@ namespace coflux {
 			mode             run_mode              = mode::fixed,								//set mode
 			std::size_t      thread_size_threshold = std::thread::hardware_concurrency() * 2,	//set thread size threshold(when cached)
 			Args&&...        args)																//arguments for task queue						
-			: basic_thread_size_(basic_thread_size)
+			: basic_thread_size_(size_upper(basic_thread_size))
 			, mode_(run_mode)
-			, thread_size_threshold_(thread_size_threshold)
+			, thread_size_threshold_(size_upper(thread_size_threshold))
 			, task_queue_(std::forward<Args>(args)...) {
 			run();
 		}
@@ -220,7 +220,7 @@ namespace coflux {
 		}
 
 		auto submit(std::coroutine_handle<> handle) {
-			if (!running_.load(std::memory_order_acquire)) {
+			if (!running_.load(std::memory_order_acquire)) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				Submit_error();
 			}
 			task_queue_.enqueue(handle);

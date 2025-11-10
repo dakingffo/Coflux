@@ -26,14 +26,12 @@ namespace coflux {
 		template <typename...Args>
 			requires (!has_allocator<container_type>)
 		unbounded_queue(Args&&...args)
-			: cont_(std::forward<Args>(args)...), size_(0) {
-		}
+			: cont_(std::forward<Args>(args)...), size_(0) {}
 
 		template <typename...Args>
 			requires has_allocator<container_type>
 		unbounded_queue(Args&&...args, const allocator_type& alloc = allocator_type())
-			: cont_(std::forward<Args>(args)..., alloc), size_(0) {
-		}
+			: cont_(std::forward<Args>(args)..., alloc), size_(0) {}
 
 		~unbounded_queue() = default;
 
@@ -69,7 +67,7 @@ namespace coflux {
 		bool pop(const std::atomic_bool& continuation = true) {
 			std::unique_lock<std::mutex> lock(mtx_);
 			not_empty_cv_.wait(lock, [this, &continuation]() {
-				return size_.load(std::memory_order_acquire) > 0 || !continuation.load(std::memory_order_acquire);
+				return size_.load(std::memory_order_relaxed) > 0 || !continuation.load(std::memory_order_relaxed);
 				});
 			if (!continuation || size_.load(std::memory_order_relaxed) == 0) {
 				return false;
@@ -84,14 +82,14 @@ namespace coflux {
 		value_type poll(const std::atomic_bool& continuation = true) {
 			std::unique_lock<std::mutex> lock(mtx_);
 			not_empty_cv_.wait(lock, [this, &continuation]() {
-				return size_.load(std::memory_order_acquire) > 0 || !continuation.load(std::memory_order_acquire);
+				return size_.load(std::memory_order_relaxed) > 0 || !continuation.load(std::memory_order_relaxed);
 				});
 			if (!continuation || size_.load(std::memory_order_relaxed) == 0) {
 				return value_type(nullptr);
 			}
 			value_type element = cont_.front();
 			cont_.pop_front();
-			if (size_.fetch_sub(1, std::memory_order_acq_rel)) {
+			if (size_.fetch_sub(1, std::memory_order_release)) {
 				not_empty_cv_.notify_one();
 			}
 			return element;
@@ -101,14 +99,14 @@ namespace coflux {
 		value_type poll(const std::atomic_bool& continuation, const std::chrono::duration<Rep, Period>& wait_time) {
 			std::unique_lock<std::mutex> lock(mtx_);
 			bool wait_result = not_empty_cv_.wait_for(lock, wait_time, [this, &continuation]() {
-				return size_.load(std::memory_order_acquire) > 0 || !continuation.load(std::memory_order_acquire);
+				return size_.load(std::memory_order_relaxed) > 0 || !continuation.load(std::memory_order_relaxed);
 				});
 			if (!continuation || size_.load(std::memory_order_relaxed) == 0 || !wait_result) {
 				return value_type(nullptr);
 			}
 			value_type element = cont_.front();
 			cont_.pop_front();
-			if (size_.fetch_sub(1, std::memory_order_acq_rel)) {
+			if (size_.fetch_sub(1, std::memory_order_release)) {
 				not_empty_cv_.notify_one();
 			}
 			return element;
@@ -122,7 +120,7 @@ namespace coflux {
 		) {
 			std::unique_lock<std::mutex> lock(mtx_);
 			not_empty_cv_.wait(lock, [this, &continuation]() {
-				return size_.load(std::memory_order_acquire) > 0 || !continuation.load(std::memory_order_acquire);
+				return size_.load(std::memory_order_relaxed) > 0 || !continuation.load(std::memory_order_relaxed);
 				});
 			if (!continuation || size_.load(std::memory_order_relaxed) == 0) {
 				return 0;
@@ -132,7 +130,7 @@ namespace coflux {
 				buffer[(begin + counter) & (capacity - 1)] = cont_.front();
 				cont_.pop_front();
 			}
-			if (size_.fetch_sub(counter, std::memory_order_acq_rel)) {
+			if (size_.fetch_sub(counter, std::memory_order_release)) {
 				not_empty_cv_.notify_one();
 			}
 			return counter;
@@ -148,7 +146,7 @@ namespace coflux {
 		) {
 			std::unique_lock<std::mutex> lock(mtx_);
 			bool wait_result = not_empty_cv_.wait_for(lock, wait_time, [this, &continuation]() {
-				return size_.load(std::memory_order_acquire) > 0 || !continuation.load(std::memory_order_acquire);
+				return size_.load(std::memory_order_relaxed) > 0 || !continuation.load(std::memory_order_relaxed);
 				});
 			if (!continuation || size_.load(std::memory_order_relaxed) == 0 || !wait_result) {
 				return 0;
@@ -158,7 +156,7 @@ namespace coflux {
 				buffer[(begin + counter) & (capacity - 1)] = cont_.front();
 				cont_.pop_front();
 			}
-			if (size_.fetch_sub(counter, std::memory_order_acq_rel)) {
+			if (size_.fetch_sub(counter, std::memory_order_release)) {
 				not_empty_cv_.notify_one();
 			}
 			return counter;

@@ -8,6 +8,14 @@
 #include "../forward_declaration.hpp"
 
 namespace coflux {
+	inline std::size_t size_upper(std::size_t n) noexcept {
+		n--;
+		for (int x = 1; x < (int)(8 * sizeof(std::size_t)); x <<= 1) {
+			n |= n >> x;
+		}
+		return n + 1;
+	}
+
 	template <typename Ty, typename Allocator = std::allocator<Ty>>
 	class sync_circular_buffer {
 	public:
@@ -25,12 +33,7 @@ namespace coflux {
 	public:
 		explicit sync_circular_buffer(size_type count = initial_capacity, const allocator_type& alloc = allocator_type())
 			: head_(0), tail_(0), size_(0), vec_(alloc) {
-			size_type n = std::max(count, initial_capacity);
-			n--;
-			for (int x = 1; x < (int)(8 * sizeof(size_type)); x <<= 1) {
-				n |= n >> x;
-			}
-			vec_.resize(n + 1);
+			vec_.resize(size_upper(std::max(count, initial_capacity)));
 		}
 		explicit sync_circular_buffer(const allocator_type& alloc = allocator_type())
 			: head_(0), tail_(0), size_(0), vec_(initial_capacity, alloc) {
