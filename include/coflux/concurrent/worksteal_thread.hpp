@@ -15,7 +15,7 @@ namespace coflux {
 	template <std::size_t N>
 	class worksteal_thread {
 	public:
-		static_assert(!(N& (N - 1)), "N should be power of 2.");
+		static_assert(!(N & (N - 1)), "N should be power of 2.");
 		using value_type  = std::coroutine_handle<>;
 		using pointer     = value_type*;
 		using buffer_type = value_type[N];
@@ -115,7 +115,7 @@ namespace coflux {
 					if (n) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 						Handle_local();
 					}
-					Try_steal(threads, mt);
+					Try_steal(run_mode, threads, mt);
 				}
 
 				if (run_mode == mode::cached) {
@@ -151,12 +151,12 @@ namespace coflux {
 			}
 		}
 
-		void Try_steal(std::vector<std::unique_ptr<worksteal_thread>>& threads, std::mt19937& mt) noexcept {
+		void Try_steal(mode run_mode, std::vector<std::unique_ptr<worksteal_thread>>& threads, std::mt19937& mt) noexcept {
 			std::size_t threads_size = threads.size();
 			std::size_t begin_pos = (std::size_t)mt() & (threads_size - 1);
 			for (int i = 0; i < (threads_size >> 1); i++) {
 				size_t idx = (i + begin_pos) & (threads_size - 1);
-				if (threads[idx].get() == this || !threads[idx]->active_.load(std::memory_order_relaxed)) {
+				if (threads[idx].get() == this || (run_mode == mode::cached ? !threads[idx]->active_.load(std::memory_order_relaxed) : true)) {
 					continue;
 				}
 				value_type handle = Steal(*threads[idx]);

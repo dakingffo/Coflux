@@ -50,6 +50,16 @@ namespace coflux {
 
 		template <typename Ref>
 		void emplace(Ref&& value) {
+			for (int i = 0; i < 32; i++) {
+				if (mtx_.try_lock()) {
+					cont_.push_back(std::forward<Ref>(value));
+					size_.fetch_add(1, std::memory_order_release);
+					mtx_.unlock();
+					not_empty_cv_.notify_one();
+					return;
+				}
+				std::this_thread::yield();
+			}
 			std::lock_guard<std::mutex> lock(mtx_);
 			cont_.push_back(std::forward<Ref>(value));
 			size_.fetch_add(1, std::memory_order_release);
