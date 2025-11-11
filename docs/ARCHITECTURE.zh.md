@@ -113,13 +113,23 @@ fork_view，正如它的名字，观察着一个fork，因此不应该将fork_vi
 
 #### 异常处理
 
-异常可以跨线程捕获，就如同同步任务重异常击穿调用栈一样。如果某个task/fork抛出了异常，那么co_await调用处会知晓。这依赖于std::exception_ptr。
-同时提供`on_error_/on_cancel`（only for task<void>/fork<void>）,用于处理异常指针的回调逻辑或取消逻辑。
+异常可以跨线程捕获，就如同同步任务重异常击穿调用栈一样。如果某个task/fork抛出了异常，那么co_await/get_result/join调用处会重抛该异常。这依赖于std::exception_ptr。
+同时提供`on_error_/on_cancel`,用于处理异常指针的回调逻辑或取消逻辑。
+
+需要注意的是，在多线程环境下，一个具体的异常只能被消费(或抛出)一次。
+例如，如果任务t内部抛出一个异常且`t.on_error([](std::exception_ptr){...})`成功执行，那么后续：
+1. `t.get_result()/co_await`将不再抛出对应的异常，而是抛出一个`std::runtime_error("Can't get result because there is an exception.")`。
+2. `t.join()`不再抛出任何异常。
+3. `t.on_error()`注册的其余回调将会被忽略。
+   
+抛出异常的`task/fork`被标记为`failed`，异常被消费(或抛出)后，状态被标记为handled。
+
+值得注意的是，取消(见下文)等效于一个特殊的“异常”，在这种情况下，`join()`不会抛出异常，但`get_result()`仍然抛出异常(为了打断赋值语句)，且尝试调用`on_cancel()`处注册的**无参**回调(不同于`on_error()`, 此处注册的函数对取消信息没有消耗性，故所有注册的回调一定都执行，无论`t.get_result()/co_await`是否抛出异常)。
 
 #### 协程取消
 
 coflux的取消是协作式的。
-当一个task或fork取消时，它链式传播给所有子fork。子fork通过
+当一个task或fork取消时，它将被标记为`cancelled`，然后把取消事件链式传播给所有子fork。子fork通过
 `co_await coflux::this_fork::get_stop_token()`
 获取到取消信息。然后调用：
 `co_await coflux:this_fork::cancel()`

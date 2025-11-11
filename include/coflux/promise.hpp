@@ -216,11 +216,11 @@ namespace coflux {
 			void on_cancel(Func&& func) {
 				emplace_or_invoke_callback(
 					[func = std::forward<Func>(func), &st = get_status()](result_proxy& res) {
-						if (res.st_.load(std::memory_order_relaxed) == cancelled) {
+						if (res.st_.load(std::memory_order_relaxed) == cancelled || 
+							res.st_.load(std::memory_order_relaxed) == handled) {
 							//std::cout << "reach on_cancel\n";
-							if (st.exchange(handled) != handled) {
-								func();
-							}
+							st.store(handled, std::memory_order_relaxed)
+							func();
 						}
 					});
 			}
@@ -344,11 +344,11 @@ namespace coflux {
 			void on_cancel(Func&& func) {
 				emplace_or_invoke_callback(
 					[func = std::forward<Func>(func) ,&st = get_status()](result_proxy& res) {
-						if (res.st_.load(std::memory_order_relaxed) == cancelled) {
+						if (res.st_.load(std::memory_order_relaxed) == cancelled || 
+							res.st_.load(std::memory_order_relaxed) == handled) {
 							//std::cout << "reach on_cancel\n";
-							if (st.exchange(handled) != handled) {
-								func();
-							}
+							st.store(handled, std::memory_order_relaxed)
+							func();
 						}
 					});
 			}
@@ -676,7 +676,7 @@ namespace coflux {
 		using yield_proxy    = typename base::yield_proxy;
 		using generator_type = generator<Ty>;
 
-		promise() : active_(this) {}
+		promise() : active_(this), next_(nullptr) {}
 		~promise() = default;
 
 		generator_type get_return_object() noexcept {
@@ -685,6 +685,10 @@ namespace coflux {
 
 		status get_status() noexcept {
 			return this->product_.get_status().load(std::memory_order_relaxed);
+		}
+
+		status get_active_status() noexcept {
+			return this->active_->get_status();
 		}
 
 		bool has_value() noexcept {
@@ -696,25 +700,49 @@ namespace coflux {
 		std::suspend_always yield_value(generator_type&& subgenerator) {
 			promise* new_active = &(subgenerator.handle_.promise());
 			subgenerator.handle_ = nullptr;
-			has_new_sub_ = true;
-			if (active_ == this) {
-				active_ = new_active;
-				new_active->next_ = this;
-			}
-			else {
-				promise* my_old_next = next_;
-				next_ = new_active;
-				new_active->next_ = my_old_next; // temporarily stored here
-			}
+			new_active->next_ = this;
+			this->active_ = new_active;
+			this->product_.st_.store(unprepared, std::memory_order_relaxed);
 			return {};
 		}
 
-		bool has_new_sub_ = false;
+		promise* active_;
+		promise* next_;
 
-		union {
-			promise* active_;
-			promise* next_;
-		};
+		void resume_active() {
+			while (get_status() != completed /* If fail, break out by throw*/) {
+				std::coroutine_handle<promise>::from_promise(*active_).resume();
+				switch (get_active_status()) {
+				case unprepared:
+					this->active_ = this->active_->active_;
+					break;
+				case suspending:
+					if (this != this->active_) {
+						this->product_.replace_value(std::move(*active_).get_value());
+					}
+					return;
+				case failed:
+					Destroy_then_throw(std::move(*active_).get_error());
+					break;
+				case completed:
+					if (this != this->active_) {
+						promise* old_active = this->active_;
+						this->active_ = old_active->next_;
+						std::coroutine_handle<promise>::from_promise(*old_active).destroy();
+					}
+					break;
+				}
+			}
+		}
+
+		void Destroy_then_throw(std::exception_ptr e) {
+			while (this != this->active_) {
+				promise* old_active = this->active_;
+				this->active_ = this->active_->next_;
+				std::coroutine_handle<promise>::from_promise(*old_active).destroy();
+			}
+			std::rethrow_exception(e);
+		}
 	};
 }
 

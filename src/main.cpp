@@ -1,29 +1,31 @@
 #include <iostream>
-
-#include <coflux/task.hpp>
+#include <string>
+#include <numeric>
 #include <coflux/scheduler.hpp>
 #include <coflux/combiner.hpp>
-#include <coflux/channel.hpp>
+#include <coflux/task.hpp>
 #include <coflux/generator.hpp>
-
-using task_executor = coflux::thread_pool_executor<>;
+// --- 通用设置 (Common Setup) ---
+using pool = coflux::thread_pool_executor<>;
+using timer = coflux::timer_executor;
+using sche = coflux::scheduler<pool, timer>;
 
 // 模拟异步读取网络请求
-coflux::fork<std::string, task_executor> async_read_request(auto&&, int client_id) {
+coflux::fork<std::string, pool> async_read_request(auto&&, int client_id) {
     std::cout << "[Client " << client_id << "] Waiting for request..." << std::endl;
     co_await std::chrono::milliseconds(200 + client_id * 100);
     co_return "Hello from client " + std::to_string(client_id);
 }
 
 // 模拟异步写回网络响应
-coflux::fork<void, task_executor> async_write_response(auto&&, const std::string& response) {
+coflux::fork<void, pool> async_write_response(auto&&, const std::string& response) {
     std::cout << "  -> Echoing back: '" << response << "'" << std::endl;
     co_await std::chrono::milliseconds((rand() % 5) * 100);
     co_return;
 }
 
 // 使用结构化并发处理单个连接
-coflux::fork<void, task_executor> handle_connection(auto&&, int client_id) {
+coflux::fork<void, pool> handle_connection(auto&&, int client_id) {
     try {
         auto&& env = co_await coflux::context();
         auto request = co_await async_read_request(env, client_id);
@@ -37,6 +39,19 @@ coflux::fork<void, task_executor> handle_connection(auto&&, int client_id) {
     // 当 handle_connection 结束时，所有它创建的 fork (read/write) 都会被自动清理
 }
 
+// 辅助函数：模拟异步IO
+coflux::fork<std::string, pool> async_fetch_data(auto&&, std::string data, std::chrono::milliseconds delay) {
+    co_await delay;
+    co_return "Fetched$" + data;
+}
+
+// 辅助函数：模拟异步IO（会失败）
+coflux::fork<std::string, pool> async_fetch_data_error(auto&&) {
+    co_await std::chrono::milliseconds(50);
+    throw std::runtime_error("Data fetch failed!");
+    co_return "";
+}
+
 // === 生成器示例 ===
 coflux::generator<int> fibonacci(int n) {
     int a = 0, b = 1;
@@ -48,12 +63,14 @@ coflux::generator<int> fibonacci(int n) {
     }
 }
 
-coflux::fork<int, task_executor> nums(auto&&, int i) {
-    co_return i * 2;
-}
+coflux::generator<int> recursive_countdown(int n, auto&& fibonacci){
+    if (n > 0) {
+        co_yield fibonacci(n);
+        co_yield recursive_countdown(n - 1, fibonacci);
+    }
+};
 
 int main() {
-
     std::cout << R"(
  ____     _____   ____    __       __  __   __   __     
 /\  _`\  /\  __`\/\  _`\ /\ \     /\ \/\ \ /\ \ /\ \    
@@ -65,84 +82,457 @@ int main() {
 
 )";
 
-    // --- 1. 演示结构化并发与组合器 ---
-    std::cout << "--- 1. Demonstrating Structured Concurrency with when_all ---\n";
+    // --- 1. 演示：结构化并发与 `when_all`  ---
+    std::cout << "--- 1. Demo: Structured Concurrency with when_all ---\n";
     {
-        // 创建一个顶层task来管理一组并发连接
-        {
-            using task_scheduler = coflux::scheduler<coflux::thread_pool_executor<>, coflux::timer_executor>;
-            auto env = coflux::make_environment<task_scheduler>();
-            auto server_task = [](auto) -> coflux::task<void, task_executor, task_scheduler> {
-                std::cout << "Server task starting 3 concurrent connections...\n";
-                co_await coflux::when_all(
-                    handle_connection(co_await coflux::context(), 1),
-                    handle_connection(co_await coflux::context(), 2),
-                    handle_connection(co_await coflux::context(), 3)
-                );
-                std::cout << "All connections handled.\n";
-                }(env);
-            // RAII阻塞等待整个服务器任务完成
-        }
-        std::cout << std::endl;
-        {
-            // 构建a->b->c且a->c的有向无环图
-            auto DAG_task_lambda = [](auto) -> coflux::task<void, task_executor> {
-                std::cout << "Dag task starting find user's names by their ids...\n";
-                auto get_user_id_lambda = [](int x) { return x * 2; };
-                auto get_user_name_fork = [](auto&&, coflux::fork_view<int> id) -> coflux::fork<std::string, task_executor> {
-                    co_return "User" + std::to_string(co_await id);
-                };
-
-                auto&& my_env = co_await coflux::context();
-                auto&& get_user_id_fork = coflux::make_fork<task_executor>(get_user_id_lambda, my_env);
-                for (int x = 0; x < 5; x++) {
-                    auto id = get_user_id_fork(x).get_view();
-                    std::cout << co_await(id) << " : " << co_await(get_user_name_fork(my_env, id)) << '\n';
-                }
-                };
-            DAG_task_lambda(coflux::make_environment(coflux::scheduler{ task_executor{ 3 } }))
-                .then([]() {
-                        std::cout << "This is a DAG demo!\n";
-                        })
-                .on_void([]() {
-                        std::cout << "B get C by view!\n";
-                        })
-                .join();
-            // 手动join
-        }
-
-    }
-    std::cout << "\n--- Structured Concurrency Demo Finished ---\n\n";
-
-    // --- 2. 演示生成器与Ranges集成 ---
-    std::cout << "--- 2. Demonstrating Generator with C++20 Ranges ---\n";
-    std::cout << "First 5 even Fibonacci numbers, squared:\n";
-    auto view = fibonacci(15)
-        | std::views::filter([](int n) { return n % 2 == 0; })
-        | std::views::take(5)
-        | std::views::transform([](int n) { return n * n; });
-
-    for (int val : view) {
-        std::cout << val << " ";
-    }
-    std::cout << "\n\n--- Generator Demo Finished ---\n";
-    
-    // --- 3. 演示构造fork的range利用when将异步解析到同步作用域 ---
-    std::cout << "\n--- 3. Demonstrating A Task Range then using when(n) to parse Async operations into a Sync scope. ---\n";
-    {
-        auto env = coflux::make_environment(coflux::scheduler{ task_executor{3} });
-        auto print_nums = [](auto)->coflux::task<void, task_executor> {
-            auto&& env = co_await coflux::context();
-            std::vector<coflux::fork<int, task_executor>> vec;
-            for (int i = 0; i < 10; i++) {
-                vec.push_back(nums(env, i));
-            }
-            for (auto num : co_await(vec | coflux::when(8)) | std::views::drop(2) | std::views::take(4)) {
-                std::cout << num << ' ';
-            }
+        auto env = coflux::make_environment<sche>(pool{ 4 }, timer{});
+        auto server_task = [](auto env) -> coflux::task<void, pool, sche> {
+            std::cout << "Server task starting 3 concurrent connections...\n";
+            co_await coflux::when_all(
+                handle_connection(co_await coflux::context(), 1),
+                handle_connection(co_await coflux::context(), 2),
+                handle_connection(co_await coflux::context(), 3)
+            );
+            std::cout << "All connections handled.\n";
             }(env);
+        // server_task 析构时，RAII 会自动阻塞 main 线程，
+        // 直到 server_task 及其所有子 fork (handle_connection) 全部完成。
     }
-    std::cout << "\n\n--- All Demo Finished ---\n";
-    
+
+    // --- 2. 演示：`co_await` / `.on_xxx`  ---
+    std::cout << "\n--- 2. Demo: Mixed Style (co_await + Chaining) ---\n";
+    {
+        auto env = coflux::make_environment<sche>(pool{ 2 }, timer{});
+        auto launch = [&](auto env) -> coflux::task<void, pool, sche> {
+            auto ctx = co_await coflux::context();
+            std::atomic<bool> success_called = false;
+            std::atomic<bool> error_called = false;
+
+            // 演示成功路径
+            std::cout << "Awaiting success task with .on_value()...\n";
+            std::string result = co_await async_fetch_data(ctx, "SuccessData", std::chrono::milliseconds(50))
+                .on_value([&](const std::string& s) {
+                std::cout << "  [on_value callback] Fired for: " << s << "\n";
+                success_called = true;
+                    })
+                .on_error([&](auto) { // 不会执行
+                });
+            std::cout << "  [co_await result] Got: " << result << "\n";
+
+            // 演示失败路径
+            std::cout << "Awaiting error task with .on_error()...\n";
+            try {
+                // co_await 一个右值 task
+                co_await async_fetch_data_error(ctx)
+                    .on_value([&](auto) { // 不会执行 
+                    })
+                    .on_error([&](std::exception_ptr e) {
+                    std::cout << "  [on_error callback] Fired! Exception consumed.\n";
+                    error_called = true;
+                        });
+            }
+            catch (const std::runtime_error& e) {
+                // 异常被 on_error 处理后，get_result() 会抛出 No_result_error
+                std::cout << "  [co_await catch] Correctly caught: " << e.what() << "\n";
+            }
+
+            assert(success_called.load());
+            assert(error_called.load());
+            };
+        auto demo_task = launch(env);
+        // RAII 析构 会等待 demo_task 完成
+    }
+
+    // --- 3. 演示：`make_fork` 与 `fork_view` 依赖图 ---
+    std::cout << "\n--- 3. Demo: `make_fork` and `fork_view` Dependency Graph ---\n";
+    {
+        auto env = coflux::make_environment<sche>(pool{ 3 }, timer{});
+
+        // 1. 定义同步/异步的 callables
+        // 包装一个 "std::" 函数 (或类似的同步lambda)
+        auto sync_fetch_user_id = [](const std::string& username) -> int {
+            std::cout << "  [Task A] (Sync) Fetching ID for '" << username << "'\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            return std::stoi(username.substr(username.find_first_of('$') + 1));
+            };
+        // B 和 C 依赖 A 的结果
+        auto fetch_user_name = [](auto&&, coflux::fork_view<int> id_view) -> coflux::fork<std::string, pool> {
+            int id = co_await id_view;
+            std::cout << "  [Task B] (Async) Getting name for ID " << id << "\n";
+            co_return "Daking";
+            };
+        auto fetch_user_perms = [](auto&&, coflux::fork_view<int> id_view) -> coflux::fork<std::string, pool> {
+            int id = co_await id_view;
+            std::cout << "  [Task C] (Async) Getting perms for ID " << id << "\n";
+            co_return "Admin";
+            };
+
+        auto launch = [&](auto env) -> coflux::task<void, pool, sche> {
+            auto ctx = co_await coflux::context();
+
+            // 2. 用 make_fork 将同步函数 "fork化"
+            auto get_id_fork_factory = coflux::make_fork<pool>(sync_fetch_user_id, ctx);
+
+            // 3. 执行图
+            auto id_task = get_id_fork_factory("daking$123");
+            auto id_view = id_task.get_view(); // 共享结果
+
+            // 4. B 和 C 并发启动
+            auto name_task = fetch_user_name(ctx, id_view);
+            auto perms_task = fetch_user_perms(ctx, id_view);
+
+            // 5. 等待最终结果
+            auto [name, perms] = co_await coflux::when_all(name_task, perms_task);
+            std::cout << "  [Result] User: " << name << ", Permissions: " << perms << "\n";
+            };
+		auto demo_task = launch(env);
+        // RAII 析构 等待完成
+    }
+
+    // --- 4. 演示：`when(n)` 异步流水线 ---
+    std::cout << "\n--- 4. Demo: Async Pipeline with `when(n)` ---\n";
+    {
+        auto env = coflux::make_environment<sche>(pool{ 5 }, timer{});
+
+        auto launch = [&](auto env) -> coflux::task<void, pool, sche> {
+            auto ctx = co_await coflux::context();
+            std::vector<coflux::fork<std::string, pool>> downloads;
+
+            // 启动5个下载任务，速度不同
+            downloads.push_back(async_fetch_data(ctx, "File 1 (200ms)", std::chrono::milliseconds(200)));
+            downloads.push_back(async_fetch_data(ctx, "File 2 (50ms)", std::chrono::milliseconds(50)));
+            downloads.push_back(async_fetch_data(ctx, "File 3 (300ms)", std::chrono::milliseconds(300)));
+            downloads.push_back(async_fetch_data(ctx, "File 4 (10ms)", std::chrono::milliseconds(10)));
+            downloads.push_back(async_fetch_data(ctx, "File 5 (70ms)", std::chrono::milliseconds(70)));
+
+            std::cout << "Starting 5 downloads, waiting for the first 3 to complete...\n";
+
+            // `co_await(vec | when(n))`
+            // 等待5个任务中【最快完成】的3个，处理掉前缀"Fetched$"
+            std::cout << "\n  [Result] The first 3 completed files were:\n";
+            for (const auto& s : co_await(downloads | coflux::when(3)) |
+                std::views::transform([](auto&& s) { return s.substr(s.find_first_of('$') + 1); })) 
+            {
+                std::cout << "  -> " << s << "\n";
+            }
+            };
+        auto demo_task = launch(env);
+        // RAII 析构 等待所有任务（包括未被 co_await 的）完成
+    }
+
+    // --- 5. 演示：生成器 (Loop & Recursion) ---
+    std::cout << "\n--- 5. Demo: Generators (Loop & Recursion) ---\n";
+    {
+        // 循环 (Loop)
+        std::cout << "Looping (Fibonacci):\n  ";
+        auto view = fibonacci(15)
+            | std::views::filter([](int n) { return n % 2 == 0; })
+            | std::views::take(5)
+            | std::views::transform([](int n) { return n * n; });
+        for (int val : view) { std::cout << val << " "; }
+
+        // 递归 (Recursion)
+        std::cout << "\nRecursion (Countdown):\n  ";
+        for (int val : recursive_countdown(5, fibonacci)) {
+            std::cout << val << " ";
+        }
+        std::cout << "\n";
+    }
+
+    std::cout << "\n--- All Demos Finished ---\n";
     return 0;
 }
+
+/*
+#include <iostream>
+#include <string>
+#include <coflux/scheduler.hpp>
+#include <coflux/combiner.hpp>
+#include <coflux/task.hpp>
+
+using pool = coflux::thread_pool_executor<>;
+using timer = coflux::timer_executor;
+using sche = coflux::scheduler<pool, timer>;
+
+// 模拟异步读取网络请求
+coflux::fork<std::string, pool> async_read_request(auto&&, int client_id) {
+    std::cout << "[Client " << client_id << "] Waiting for request..." << std::endl;
+    co_await std::chrono::milliseconds(200 + client_id * 100);
+    co_return "Hello from client " + std::to_string(client_id);
+}
+
+// 模拟异步写回网络响应
+coflux::fork<void, pool> async_write_response(auto&&, const std::string& response) {
+    std::cout << "  -> Echoing back: '" << response << "'" << std::endl;
+    co_await std::chrono::milliseconds((rand() % 5) * 100);
+    co_return;
+}
+
+// 使用结构化并发处理单个连接
+coflux::fork<void, pool> handle_connection(auto&&, int client_id) {
+    try {
+        auto&& env = co_await coflux::context();
+        auto request = co_await async_read_request(env, client_id);
+        auto processed_response = request + " [processed by server]";
+        co_await async_write_response(env, processed_response);
+        std::cout << "[Client " << client_id << "] Connection handled successfully." << std::endl;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "[Client " << client_id << "] Error: " << e.what() << std::endl;
+    }
+    // 当 handle_connection 结束时，所有它创建的 fork (read/write) 都会被自动清理
+}
+
+int main() {
+    std::cout << "--- Demo: Structured Concurrency with when_all ---\n";
+    {
+        auto env = coflux::make_environment<sche>(pool{ 4 }, timer{});
+        auto server_task = [](auto env) -> coflux::task<void, pool, sche> {
+            std::cout << "Server task starting 3 concurrent connections...\n";
+            co_await coflux::when_all(
+                handle_connection(co_await coflux::context(), 1),
+                handle_connection(co_await coflux::context(), 2),
+                handle_connection(co_await coflux::context(), 3)
+            );
+            std::cout << "All connections handled.\n";
+            }(env);
+        // server_task 析构时，RAII 会自动阻塞 main 线程，
+        // 直到 server_task 及其所有子 fork (handle_connection) 全部完成。
+    }
+    std::cout << "\n--- Demo Finished ---\n";
+    return 0;
+}
+*/
+
+/*
+#include <iostream>
+#include <string>
+#include <coflux/scheduler.hpp>
+#include <coflux/task.hpp>
+
+using pool = coflux::thread_pool_executor<>;
+using timer = coflux::timer_executor;
+using sche = coflux::scheduler<pool, timer>;
+
+// 辅助函数：模拟异步IO
+coflux::fork<std::string, pool> async_fetch_data(auto&&, std::string data, std::chrono::milliseconds delay) {
+    co_await delay;
+    co_return "Fetched$" + data;
+}
+
+// 辅助函数：模拟异步IO（会失败）
+coflux::fork<std::string, pool> async_fetch_data_error(auto&&) {
+    co_await std::chrono::milliseconds(50);
+    throw std::runtime_error("Data fetch failed!");
+    co_return "";
+}
+
+int main() {
+    std::cout << "--- Demo: Mixed Style (co_await + Chaining) ---\n";
+    {
+        auto env = coflux::make_environment<sche>(pool{ 2 }, timer{});
+        auto lanuch = [&](auto env) -> coflux::task<void, pool, sche> {
+            auto ctx = co_await coflux::context();
+            std::atomic<bool> success_called = false;
+            std::atomic<bool> error_called = false;
+
+            // 演示成功路径
+            std::cout << "Awaiting success task with .on_value()...\n";
+            std::string result = co_await async_fetch_data(ctx, "SuccessData", std::chrono::milliseconds(50))
+                .on_value([&](const std::string& s) {
+                std::cout << "  [on_value callback] Fired for: " << s << "\n";
+                success_called = true;
+                    })
+                .on_error([&](auto) { // 不会执行
+                });
+            std::cout << "  [co_await result] Got: " << result << "\n";
+
+            // 演示失败路径
+            std::cout << "Awaiting error task with .on_error()...\n";
+            try {
+                // co_await 一个右值 task
+                co_await async_fetch_data_error(ctx)
+                    .on_value([&](auto) { // 不会执行
+                    })
+                    .on_error([&](std::exception_ptr e) {
+                    std::cout << "  [on_error callback] Fired! Exception consumed.\n";
+                    error_called = true;
+                        });
+            }
+            catch (const std::runtime_error& e) {
+                // 异常被 on_error 处理后，get_result() 会抛出 No_result_error
+                std::cout << "  [co_await catch] Correctly caught: " << e.what() << "\n";
+            }
+
+            assert(success_called.load());
+            assert(error_called.load());
+            };
+        auto demo_task = launch(env);
+        // RAII 析构 会等待 demo_task 完成
+    }
+
+    std::cout << "\n--- Demo Finished ---\n";
+    return 0;
+}
+*/
+
+/*
+#include <iostream>
+#include <string>
+#include <coflux/scheduler.hpp>
+#include <coflux/task.hpp>
+#include <coflux/combiner.hpp>
+
+using pool = coflux::thread_pool_executor<>;
+using timer = coflux::timer_executor;
+using sche = coflux::scheduler<pool, timer>;
+
+int main() {
+    std::cout << "--- Demo: `make_fork` and `fork_view` Dependency Graph ---\n";
+    {
+        auto env = coflux::make_environment<sche>(pool{ 3 }, timer{});
+
+        // 1. 定义同步/异步的 callables
+        // 包装一个 "std::" 函数 (或类似的同步lambda)
+        auto sync_fetch_user_id = [](const std::string& username) -> int {
+            std::cout << "  [Task A] (Sync) Fetching ID for '" << username << "'\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            return std::stoi(username.substr(username.find_first_of('$') + 1));
+            };
+        // B 和 C 依赖 A 的结果
+        auto fetch_user_name = [](auto&&, coflux::fork_view<int> id_view) -> coflux::fork<std::string, pool> {
+            int id = co_await id_view;
+            std::cout << "  [Task B] (Async) Getting name for ID " << id << "\n";
+            co_return "Daking";
+            };
+        auto fetch_user_perms = [](auto&&, coflux::fork_view<int> id_view) -> coflux::fork<std::string, pool> {
+            int id = co_await id_view;
+            std::cout << "  [Task C] (Async) Getting perms for ID " << id << "\n";
+            co_return "Admin";
+            };
+
+        auto launch = [&](auto env) -> coflux::task<void, pool, sche> {
+            auto ctx = co_await coflux::context();
+
+            // 2. 用 make_fork 将同步函数 "fork化"
+            auto get_id_fork_factory = coflux::make_fork<pool>(sync_fetch_user_id, ctx);
+
+            // 3. 执行图
+            auto id_task = get_id_fork_factory("daking$123");
+            auto id_view = id_task.get_view(); // 共享结果
+
+            // 4. B 和 C 并发启动
+            auto name_task = fetch_user_name(ctx, id_view);
+            auto perms_task = fetch_user_perms(ctx, id_view);
+
+            // 5. 等待最终结果
+            auto [name, perms] = co_await coflux::when_all(name_task, perms_task);
+            std::cout << "  [Result] User: " << name << ", Permissions: " << perms << "\n";
+            };
+        auto demo_task = launch(env);
+        // RAII 析构 等待完成
+    }
+    std::cout << "\n--- Demo Finished ---\n";
+    return 0;
+}
+*/
+
+/*
+#include <iostream>
+#include <string>
+#include <coflux/scheduler.hpp>
+#include <coflux/combiner.hpp>
+#include <coflux/task.hpp>
+
+using pool = coflux::thread_pool_executor<>;
+using timer = coflux::timer_executor;
+using sche = coflux::scheduler<pool, timer>;
+
+// 辅助函数：模拟异步IO
+coflux::fork<std::string, pool> async_fetch_data(auto&&, std::string data, std::chrono::milliseconds delay) {
+    co_await delay;
+    co_return "Fetched$" + data;
+}
+
+int main() {
+    std::cout << "--- Demo: Async Pipeline with `when(n)` ---\n";
+    {
+        auto env = coflux::make_environment<sche>(pool{ 5 }, timer{});
+
+        auto launch = [&](auto env) -> coflux::task<void, pool, sche> {
+            auto ctx = co_await coflux::context();
+            std::vector<coflux::fork<std::string, pool>> downloads;
+
+            // 启动5个下载任务，速度不同
+            downloads.push_back(async_fetch_data(ctx, "File 1 (200ms)", std::chrono::milliseconds(200)));
+            downloads.push_back(async_fetch_data(ctx, "File 2 (50ms)", std::chrono::milliseconds(50)));
+            downloads.push_back(async_fetch_data(ctx, "File 3 (300ms)", std::chrono::milliseconds(300)));
+            downloads.push_back(async_fetch_data(ctx, "File 4 (10ms)", std::chrono::milliseconds(10)));
+            downloads.push_back(async_fetch_data(ctx, "File 5 (70ms)", std::chrono::milliseconds(70)));
+
+            std::cout << "Starting 5 downloads, waiting for the first 3 to complete...\n";
+
+            // `co_await(vec | when(n))`
+            // 等待5个任务中【最快完成】的3个，处理掉前缀"Fetched$"
+            std::cout << "\n  [Result] The first 3 completed files were:\n";
+            for (const auto& s : co_await(downloads | coflux::when(3)) |
+                std::views::transform([](auto&& s) { return s.substr(s.find_first_of('$') + 1); }))
+            {
+                std::cout << "  -> " << s << "\n";
+            }
+            };
+        auto demo_task = launch(env);
+        // RAII 析构 等待所有任务（包括未被 co_await 的）完成
+    }
+    std::cout << "--- Demo Finished ---\n";
+    return 0;
+}
+*/
+
+/*
+#include <iostream>
+#include <string>
+#include <ranges>
+#include <coflux/generator.hpp>
+
+// === 生成器示例 ===
+coflux::generator<int> fibonacci(int n) {
+    int a = 0, b = 1;
+    for (int i = 0; i < n; ++i) {
+        co_yield a;
+        int next = a + b;
+        a = b;
+        b = next;
+    }
+}
+
+coflux::generator<int> recursive_countdown(int n, auto&& fibonacci) {
+    if (n > 0) {
+        co_yield fibonacci(n);
+        co_yield recursive_countdown(n - 1, fibonacci);
+    }
+};
+
+int main() {
+    std::cout << "--- Demo: Generators (Loop & Recursion) ---\n";
+    {
+        // 循环 (Loop)
+        std::cout << "Looping (Fibonacci):\n  ";
+        auto view = fibonacci(15)
+            | std::views::filter([](int n) { return n % 2 == 0; })
+            | std::views::take(5)
+            | std::views::transform([](int n) { return n * n; });
+        for (int val : view) { std::cout << val << " "; }
+
+        // 递归 (Recursion)
+        std::cout << "\nRecursion (Countdown):\n  ";
+        for (int val : recursive_countdown(5, fibonacci)) {
+            std::cout << val << " ";
+        }
+        std::cout << "\n";
+    }
+
+    std::cout << "\n--- Demo Finished ---\n";
+    return 0;
+}
+*/

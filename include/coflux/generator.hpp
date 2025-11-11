@@ -20,7 +20,7 @@ namespace coflux {
 
 		generator_iterator(const generator_type* owner = nullptr) 
 			: owner_(const_cast<generator_type*>(owner)) {
-			if (owner_ && owner_->handle_ && !owner_->has_value()) {
+			if (owner_ && owner_->handle_ && owner->get_status() == unprepared) {
 				owner_->next();
 			}
 		}
@@ -103,7 +103,7 @@ namespace coflux {
 		}
 
 		bool has_next() const noexcept {
-			return handle_ && get_status() != completed && get_status() != invalid;
+			return get_status() != invalid && get_status() != completed && get_status() != failed;
 		}
 
 		void next() {
@@ -111,8 +111,7 @@ namespace coflux {
 				Null_handle_error();
 			}
 			if (has_next()) {
-				Resume_active();
-				Prepare_value();
+				handle_.promise().resume_active();
 				return;
 			}
 			No_more_error();
@@ -125,15 +124,11 @@ namespace coflux {
 			if (!handle_.promise().has_value()) {
 				Value_unprepared_error();
 			}
-			return handle_.promise().get_value();
-		}
-
-		bool has_value() const {
-			return handle_ && handle_.promise().has_value();
+			return std::move(handle_.promise()).get_value();
 		}
 
 		status get_status() const noexcept {
-			return handle_ ? handle_.promise().get_status() : invalid;
+			return handle_ ? handle_.promise().get_active_status() : invalid;
 		}
 
 		iterator begin() const noexcept {
@@ -159,44 +154,6 @@ namespace coflux {
 	private:
 		friend promise_type;
 		friend iterator;
-
-		void Resume_active() {
-			promise_type& main_promise = handle_.promise();
-			promise_type*& now_active = main_promise.active_;
-			if (now_active->get_status() != completed) {
-				std::coroutine_handle<promise_type>::from_promise(*now_active).resume();
-				while (now_active->next_ == &main_promise && main_promise.has_new_sub_ || now_active->has_new_sub_) {
-					if (now_active->next_ != &main_promise) {
-						promise_type* new_active = now_active->active_;
-						now_active->next_ = new_active->next_;
-						now_active->has_new_sub_ = false;
-						new_active->next_ = now_active;
-						now_active = new_active;
-					}
-					else {
-						main_promise.has_new_sub_ = false;
-					}
-					std::coroutine_handle<promise_type>::from_promise(*now_active).resume();
-				}
-			}
-			while (now_active != &main_promise && now_active->get_status() == completed) {
-				if (now_active->get_status() == failed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-					std::rethrow_exception(now_active->get_error());
-				}
-				promise_type* next_active = now_active->next_;
-				std::coroutine_handle<promise_type>::from_promise(*now_active).destroy();
-				now_active = handle_.promise().active_ = next_active;
-				std::coroutine_handle<promise_type>::from_promise(*now_active).resume();
-			}
-		}
-
-		void Prepare_value() {
-			promise_type& main_promise = handle_.promise();
-			promise_type*& now_active = main_promise.active_;
-			if (&main_promise != now_active) {
-				main_promise.product_.replace_value(now_active->get_value());
-			}
-		}
 
 		COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void No_more_error() {
 			throw std::runtime_error("No more elements to yield.");

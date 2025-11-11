@@ -6,14 +6,15 @@
 #define COFLUX_COMBINER_HPP
 
 #include "forward_declaration.hpp"
+#include "awaiter.hpp"
 
 namespace coflux {
     template <fork_lrvalue...Forks, executive Executor>
     struct awaiter<detail::when_any_pair<Forks...>, Executor> : public detail::maysuspend_awaiter_base {
     public:
         using task_type        = std::tuple<Forks...>;
-        using value_type       = std::variant<typename std::remove_reference_t<Forks>::result_type...>;
-        using result_proxy     = std::shared_ptr<std::pair<std::atomic_size_t, value_type>>;
+        using result_type      = std::variant<typename std::remove_reference_t<Forks>::result_type...>;
+        using result_proxy     = std::shared_ptr<std::pair<std::atomic_size_t, result_type>>;
         using executor_traits  = coflux::executor_traits<Executor>;
         using executor_type    = typename executor_traits::executor_type;
         using executor_pointer = typename executor_traits::executor_pointer;
@@ -21,7 +22,7 @@ namespace coflux {
     public:
         explicit awaiter(task_type&& co_forks, executor_pointer exec, std::atomic<status>* p)
             : forks_(std::move(co_forks))
-            , result_(std::make_shared<std::pair<std::atomic_size_t, value_type>>(-1, value_type{}))
+            , result_(std::make_shared<std::pair<std::atomic_size_t, result_type>>(-1, result_type{}))
             , executor_(exec)
             , maysuspend_awaiter_base{ p } {}
         ~awaiter() {};
@@ -153,8 +154,8 @@ namespace coflux {
     struct awaiter<detail::when_all_pair<TaskLikes...>, Executor> : public detail::maysuspend_awaiter_base {
     public:
         using task_type        = std::tuple<TaskLikes...>;
-        using value_type       = std::tuple<std::optional<typename std::remove_reference_t<TaskLikes>::result_type>...>;
-        using result_proxy     = std::shared_ptr<std::pair<std::atomic_size_t, value_type>>;
+        using result_type      = std::tuple<std::optional<typename std::remove_reference_t<TaskLikes>::result_type>...>;
+        using result_proxy     = std::shared_ptr<std::pair<std::atomic_size_t, result_type>>;
         using executor_traits  = coflux::executor_traits<Executor>;
         using executor_type    = typename executor_traits::executor_type;
         using executor_pointer = typename executor_traits::executor_pointer;
@@ -162,7 +163,7 @@ namespace coflux {
     public:
         explicit awaiter(task_type&& co_basic_tasks, executor_pointer exec, std::atomic<status>* p)
             : basic_tasks_(std::move(co_basic_tasks))
-            , result_(std::make_shared<std::pair<std::atomic_size_t, value_type>>(N, value_type{}))
+            , result_(std::make_shared<std::pair<std::atomic_size_t, result_type>>(N, result_type{}))
             , executor_(exec)
             , maysuspend_awaiter_base{ p } {}
         ~awaiter() {};
@@ -301,9 +302,10 @@ namespace coflux {
     struct awaiter<detail::when_n_pair<Range>, Executor> : public detail::maysuspend_awaiter_base {
     public:
         using task_type        = std::conditional_t<std::is_lvalue_reference_v<Range>, Range, std::remove_reference_t<Range>>;
-        using value_type       = std::vector<typename std::remove_cvref_t<decltype(*std::declval<Range>().begin())>::value_type>;
+        using value_type       = typename std::remove_cvref_t<decltype(*std::declval<Range>().begin())>::value_type;
+        using result_type      = std::conditional_t<std::is_object_v<value_type>, std::vector<value_type>, void>;
         using result_proxy     = std::shared_ptr<std::conditional_t<
-            std::is_object_v<value_type>, std::pair<std::atomic_size_t, value_type>, std::atomic_size_t>>;
+            std::is_object_v<value_type>, std::pair<std::atomic_size_t, result_type>, std::atomic_size_t>>;
         using executor_traits  = coflux::executor_traits<Executor>;
         using executor_type    = typename executor_traits::executor_type;
         using executor_pointer = typename executor_traits::executor_pointer;
@@ -312,7 +314,7 @@ namespace coflux {
         explicit awaiter(std::size_t n, task_type&& co_basic_tasks, executor_pointer exec, std::atomic<status>* p)
             : n_(n)
             , basic_tasks_(std::forward<Range>(co_basic_tasks))
-            , result_(std::make_shared<std::pair<std::atomic_size_t, value_type>>(0, value_type{}))
+            , result_(std::make_shared<std::pair<std::atomic_size_t, result_type>>(0, result_type{}))
             , executor_(exec)
             , maysuspend_awaiter_base{ p } {}
         ~awaiter() {};
@@ -362,11 +364,12 @@ namespace coflux {
                         std::remove_reference_t<decltype(fork_result)>&,
                         std::remove_reference_t<decltype(fork_result)>>
                         >(fork_result).value());
-                    if (try_resume_from_this) {
-                        std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
-                        if (handle_to_resume) {
-                            executor_traits::execute(exec, handle_to_resume);
-                        }
+                }
+                if (try_resume_from_this) {
+                    stop.request_stop();
+                    std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
+                    if (handle_to_resume) {
+                        executor_traits::execute(exec, handle_to_resume);
                     }
                 }
                 };
@@ -397,6 +400,7 @@ namespace coflux {
                     }
                 }
                 if (try_resume_from_this) {
+                    stop.request_stop();
                     std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
                     if (handle_to_resume) {
                         executor_traits::execute(exec, handle_to_resume);
