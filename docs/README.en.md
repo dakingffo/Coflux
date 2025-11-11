@@ -286,7 +286,14 @@ int main() {
     return 0;
 }
 ```
-
+```mermaid
+graph TD
+demo_task-->id_task
+demo_task-->name_task
+demo_task-->perms_task
+name_task-->id_task
+perms_task-->id_task
+```
 ### 4\. `when(n)` Asynchronous Pipeline
 
 The example below demonstrates how an asynchronous data flow can non-blockingly participate in a synchronous call chain via `co_await(vec | when(n))` (integrated with `ranges`).

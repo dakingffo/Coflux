@@ -283,6 +283,14 @@ int main() {
     return 0;
 }
 ```
+```mermaid
+graph TD
+demo_task-->id_task
+demo_task-->name_task
+demo_task-->perms_task
+name_task-->id_task
+perms_task-->id_task
+```
 4. **`when(n)异步流水线`**
 
 下面的示例演示了异步数据流通过`co_await(vec | when(n))`的形式非阻塞地参与到同步调用链中(与`ranges`集成)。
