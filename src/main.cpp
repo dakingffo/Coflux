@@ -194,7 +194,7 @@ int main() {
     {
         auto env = coflux::make_environment<sche>(pool{ 5 }, timer{});
 
-        auto launch = [&](auto env) -> coflux::task<void, pool, sche> {
+        auto demo_task = [](auto env) -> coflux::task<void, pool, sche> {
             auto ctx = co_await coflux::context();
             std::vector<coflux::fork<std::string, pool>> downloads;
 
@@ -215,8 +215,7 @@ int main() {
             {
                 std::cout << "  -> " << s << "\n";
             }
-            };
-        auto demo_task = launch(env);
+            }(env);
         // RAII 析构 等待所有任务（包括未被 co_await 的）完成
     }
 

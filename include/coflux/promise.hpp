@@ -134,7 +134,7 @@ namespace coflux {
 			}
 
 			void cancel() noexcept {
-				result_.emplace_cancel(cancel_exception(Ownership));
+				result_.emplace_cancel();
 				this->stop_source_.request_stop();
 				std::atomic_signal_fence(std::memory_order_seq_cst);
 				invoke_callbacks();
@@ -201,11 +201,11 @@ namespace coflux {
 			template <typename Func>
 			void on_error(Func&& func) {
 				emplace_or_invoke_callback(
-					[func = std::forward<Func>(func), &st = get_status()](result_proxy& res) {
+					[func = std::forward<Func>(func)](result_proxy& res) {
 						if (res.st_.load(std::memory_order_relaxed) == failed) {
 							//std::cout << "reach on_error\n";
 							std::exception_ptr e = std::move(res).error();
-							if (st.exchange(handled) != handled) {
+							if (res.st_.exchange(handled) != handled) {
 								func(e);
 							}
 						}
@@ -215,11 +215,9 @@ namespace coflux {
 			template <typename Func>
 			void on_cancel(Func&& func) {
 				emplace_or_invoke_callback(
-					[func = std::forward<Func>(func), &st = get_status()](result_proxy& res) {
-						if (res.st_.load(std::memory_order_relaxed) == cancelled || 
-							res.st_.load(std::memory_order_relaxed) == handled) {
+					[func = std::forward<Func>(func)](result_proxy& res) {
+						if (res.st_.load(std::memory_order_relaxed) == cancelled) {
 							//std::cout << "reach on_cancel\n";
-							st.store(handled, std::memory_order_relaxed);
 							func();
 						}
 					});
@@ -266,7 +264,7 @@ namespace coflux {
 			}
 
 			void cancel() noexcept {
-				result_.emplace_cancel(cancel_exception(Ownership));
+				result_.emplace_cancel();
 				this->stop_source_.request_stop();
 				std::atomic_signal_fence(std::memory_order_seq_cst);
 				invoke_callbacks();
@@ -329,11 +327,11 @@ namespace coflux {
 			template <typename Func>
 			void on_error(Func&& func) {
 				emplace_or_invoke_callback(
-					[func = std::forward<Func>(func), &st = get_status()](result_proxy& res) {
+					[func = std::forward<Func>(func)](result_proxy& res) {
 						if (res.st_.load(std::memory_order_relaxed) == failed) {
 							//std::cout << "reach on_error\n";
 							std::exception_ptr e = std::move(res).error();
-							if (st.exchange(handled) != handled) {
+							if (res.st_.exchange(handled) != handled) {
 								func(e);
 							}
 						}
@@ -343,11 +341,9 @@ namespace coflux {
 			template <typename Func>
 			void on_cancel(Func&& func) {
 				emplace_or_invoke_callback(
-					[func = std::forward<Func>(func) ,&st = get_status()](result_proxy& res) {
-						if (res.st_.load(std::memory_order_relaxed) == cancelled || 
-							res.st_.load(std::memory_order_relaxed) == handled) {
+					[func = std::forward<Func>(func)](result_proxy& res) {
+						if (res.st_.load(std::memory_order_relaxed) == cancelled) {
 							//std::cout << "reach on_cancel\n";
-							st.store(handled, std::memory_order_relaxed);
 							func();
 						}
 					});

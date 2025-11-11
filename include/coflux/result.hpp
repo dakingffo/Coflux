@@ -20,7 +20,7 @@ namespace coflux {
 				if (st == completed || st == suspending) {
 					value_.~value_type();
 				}
-				else if (st == failed || st == cancelled || st == handled) {
+				else if (st == failed || st == handled) {
 					error_ = nullptr;
 					error_.~error_type();
 				}
@@ -43,8 +43,7 @@ namespace coflux {
 				st_.store(failed, std::memory_order_release);
 			}
 
-			void emplace_cancel(cancel_exception&& cancellation) noexcept {
-				new (std::addressof(error_)) error_type(std::make_exception_ptr(std::move(cancellation)));
+			void emplace_cancel() noexcept {
 				st_.store(cancelled, std::memory_order_release);
 			}
 
@@ -93,7 +92,7 @@ namespace coflux {
 			result() : error_(nullptr), st_(running) {}
 			~result() {
 				status st = st_.load(std::memory_order_acquire);
-				if (st == failed || st == cancelled || st == handled) {
+				if (st == failed || st == handled) {
 					error_ = nullptr;
 					error_.~error_type();
 				}
@@ -113,8 +112,7 @@ namespace coflux {
 				st_.store(failed, std::memory_order_release);
 			}
 
-			void emplace_cancel(cancel_exception&& cancellation) noexcept {
-				error_ = std::make_exception_ptr(std::move(cancellation));
+			void emplace_cancel() noexcept {
 				st_.store(cancelled, std::memory_order_release);
 			}
 

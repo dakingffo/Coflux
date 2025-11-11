@@ -86,7 +86,7 @@ TEST(ChainingTest, OnCancelCalledOnCancel) {
     EXPECT_TRUE(cancel_called);
     EXPECT_FALSE(value_called);
     EXPECT_FALSE(error_called);
-    EXPECT_THROW(t.get_result(), std::runtime_error); // get_result MUST throw
+    EXPECT_THROW(t.get_result(), coflux::cancel_exception); // get_result MUST throw
 }
 
 TEST(ChainingTest, OnVoidCalledOnVoidSuccess) {

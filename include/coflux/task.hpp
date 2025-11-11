@@ -65,6 +65,9 @@ namespace coflux {
 				}
 				Nothrow_join();
 				if (get_status() != completed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+					if (get_status() == cancelled) {
+						Cancellation();
+					}
 					std::exception_ptr error = std::move(handle_.promise()).get_error();
 					if (handle_.promise().get_status().exchange(handled) != handled) {
 						std::rethrow_exception(error);
@@ -84,6 +87,9 @@ namespace coflux {
 				}
 				Nothrow_join();
 				if (get_status() != completed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+					if (get_status() == cancelled) {
+						Cancellation();
+					}
 					std::exception_ptr error = std::move(handle_.promise()).get_error();
 					if (handle_.promise().get_status().exchange(handled) != handled) {
 						std::rethrow_exception(error);
@@ -287,6 +293,10 @@ namespace coflux {
 				throw std::runtime_error("Can't get result because there is an exception.");
 			}
 
+			COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void Cancellation() {
+				throw cancel_exception(Ownership);
+			}
+
 			handle_type handle_            = nullptr;
 		};
 	}
@@ -319,6 +329,9 @@ namespace coflux {
 		decltype(auto) get_result() {
 			Nothrow_join();
 			if (get_status() != completed) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+				if (get_status() == cancelled) {
+					Cancellation();
+				}
 				std::exception_ptr error = std::move(handle_.promise()).get_error();
 				if (handle_.promise().get_status().exchange(handled) != handled) {
 					std::rethrow_exception(error);
@@ -404,6 +417,10 @@ namespace coflux {
 
 		COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void No_result_error() {
 			throw std::runtime_error("Can't get result because there is an exception.");
+		}
+
+		COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void Cancellation() {
+			throw cancel_exception(false);
 		}
 
 		fork_view(handle_type handle) : handle_(handle) {}
