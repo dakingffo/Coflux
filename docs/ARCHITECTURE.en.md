@@ -86,7 +86,7 @@ Represents observing a `fork` and retrieving its result as an lvalue.
 
 `co_await` does not interfere with the `fork`'s lifecycle; the `fork` always follows the parent scope.
 
-### fork\_view
+### fork_view
 
 Now consider a scenario:
 
@@ -122,12 +122,6 @@ We cannot guarantee that the workflow will always be smooth. Coflux aims for the
 
 #### Exception Handling
 
-好的，这是您提供的关于 Coflux 异常处理、取消机制和状态管理的详细中文文本的英文翻译：
-
----
-
-**English Translation:**
-
 Exceptions can be captured across threads, just as exceptions in synchronous tasks penetrate the call stack. If a specific `task`/`fork` throws an exception, the exception will be known at the point of the `co_await`, `get_result`, or `join` call， then they will rethrow the exception. This mechanism relies on `std::exception_ptr`.
 
 We also provide `on_error` and `on_cancel` to handle exception pointer callbacks and cancellation logic, respectively.
@@ -142,7 +136,7 @@ For example, if an exception is thrown inside a task `t` and `t.on_error([](std:
 
 A `task`/`fork` that throws an exception is marked as `failed`. After the exception is consumed (or thrown), its state is marked as `handled`.
 
-It is worth noting that cancellation (see below) is equivalent to a special "exception." In this specific case, `join()` will not throw an exception, but `get_result()` will still throw an exception (to break assignment statements). Furthermore, `on_cancel()` will attempt to call registered **parameter-less** callbacks (unlike `on_error`, the functions registered here do not consume the cancellation information, so all registered callbacks are guaranteed to execute, regardless of whether `t.get_result()` or `co_await t` throws an exception).
+It is worth noting that cancellation (see below) is equivalent to a special "exception." In this specific case, `join()` will not throw an exception, but `get_result()/co_await` will still throw an exception (to break assignment statements). Furthermore, `on_cancel()` will attempt to call registered **parameter-less** callbacks (unlike `on_error`, the functions registered here do not consume the cancellation information, so all registered callbacks are guaranteed to execute, regardless of whether `t.get_result()` or `co_await t` throws an exception).
 
 #### Coroutine Cancellation
 

@@ -219,7 +219,7 @@ namespace coflux {
 						if (res.st_.load(std::memory_order_relaxed) == cancelled || 
 							res.st_.load(std::memory_order_relaxed) == handled) {
 							//std::cout << "reach on_cancel\n";
-							st.store(handled, std::memory_order_relaxed)
+							st.store(handled, std::memory_order_relaxed);
 							func();
 						}
 					});
@@ -347,7 +347,7 @@ namespace coflux {
 						if (res.st_.load(std::memory_order_relaxed) == cancelled || 
 							res.st_.load(std::memory_order_relaxed) == handled) {
 							//std::cout << "reach on_cancel\n";
-							st.store(handled, std::memory_order_relaxed)
+							st.store(handled, std::memory_order_relaxed);
 							func();
 						}
 					});
