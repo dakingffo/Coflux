@@ -367,11 +367,11 @@ namespace coflux {
 
 		template <typename Ty>
 		struct promise_yield_base {
-			using yield_proxy = result<Ty>;
+			using yield_proxy = unsync_result<Ty>;
 			using value_type  = typename yield_proxy::value_type;
 			using error_type  = typename yield_proxy::error_type;
 
-			promise_yield_base() : product_(unprepared) {}
+			promise_yield_base()  = default;
 			~promise_yield_base() = default;
 
 			void unhandled_exception() noexcept {
@@ -385,7 +385,7 @@ namespace coflux {
 			}
 
 			void return_void() noexcept {
-				product_.st_.store(completed, std::memory_order_relaxed);
+				product_.st_ = completed;
 			}
 
 			error_type&& get_error() {
@@ -672,15 +672,19 @@ namespace coflux {
 		using yield_proxy    = typename base::yield_proxy;
 		using generator_type = generator<Ty>;
 
-		promise() : active_(this), next_(nullptr) {}
-		~promise() = default;
+		promise() : next_(nullptr) {
+			active_ = this;
+		}
+		~promise() {
+			tidy();
+		}
 
 		generator_type get_return_object() noexcept {
 			return generator_type(std::coroutine_handle<promise>::from_promise(*this));
 		}
 
 		status get_status() noexcept {
-			return this->product_.get_status().load(std::memory_order_relaxed);
+			return this->product_.get_status();
 		}
 
 		status get_active_status() noexcept {
@@ -696,14 +700,13 @@ namespace coflux {
 		std::suspend_always yield_value(generator_type&& subgenerator) {
 			promise* new_active = &(subgenerator.handle_.promise());
 			subgenerator.handle_ = nullptr;
+
 			new_active->next_ = this;
 			this->active_ = new_active;
-			this->product_.st_.store(unprepared, std::memory_order_relaxed);
+			this->product_.st_ = unprepared;
+
 			return {};
 		}
-
-		promise* active_;
-		promise* next_;
 
 		void resume_active() {
 			while (get_status() != completed /* If fail, break out by throw*/) {
@@ -718,12 +721,13 @@ namespace coflux {
 					}
 					return;
 				case failed:
-					Destroy_then_throw(std::move(*active_).get_error());
+					tidy_then_throw(std::move(*active_).get_error());
 					break;
 				case completed:
 					if (this != this->active_) {
 						promise* old_active = this->active_;
 						this->active_ = old_active->next_;
+						this->active_->active_ = this->active_;
 						std::coroutine_handle<promise>::from_promise(*old_active).destroy();
 					}
 					break;
@@ -731,14 +735,22 @@ namespace coflux {
 			}
 		}
 
-		void Destroy_then_throw(std::exception_ptr e) {
+		void tidy() {
 			while (this != this->active_) {
 				promise* old_active = this->active_;
 				this->active_ = this->active_->next_;
+				this->active_->active_ = this->active_;
 				std::coroutine_handle<promise>::from_promise(*old_active).destroy();
 			}
+		}
+
+		void tidy_then_throw(std::exception_ptr e) {
+			tidy();
 			std::rethrow_exception(e);
 		}
+
+		promise* active_;
+		promise* next_;
 	};
 }
 

@@ -52,7 +52,7 @@ void character_genrator() {
     }
 
     std::cout << "\n--- mutual calling ---\n";
-    for (auto&& item : pattern_a(3) | std::views::take(6)) {
+    for (auto&& item : pattern_a(5) | std::views::take(3)) {
         std::cout << item << "\n";
     }
 }

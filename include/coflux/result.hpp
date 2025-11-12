@@ -14,10 +14,10 @@ namespace coflux {
 			using value_type = Ty;
 			using error_type = std::exception_ptr;
 
-			result(const status& st = running) : error_(nullptr), st_(st) {}
+			result() : error_(nullptr), st_(running) {}
 			~result() {
 				status st = st_.load(std::memory_order_acquire);
-				if (st == completed || st == suspending) {
+				if (st == completed) {
 					value_.~value_type();
 				}
 				else if (st == failed || st == handled) {
@@ -31,7 +31,6 @@ namespace coflux {
 			result& operator=(const result&) = delete;
 			result& operator=(result&&) = delete;
 
-			// only for task/fork
 			template <typename Ref>
 			void emplace_value(Ref&& ref) noexcept(std::is_nothrow_constructible_v<value_type, Ref>) {
 				new (std::addressof(value_)) value_type(std::forward<Ref>(ref));
@@ -65,16 +64,6 @@ namespace coflux {
 
 			error_type&& error()&& {
 				return std::move(error_);
-			}
-
-			// only for generator
-			template <typename Ref>
-			void replace_value(Ref&& ref) noexcept(std::is_nothrow_constructible_v<value_type, Ref>) {
-				if (st_.load(std::memory_order_relaxed) == suspending) {
-					value_.~value_type();
-				}
-				new (std::addressof(value_)) value_type(std::forward<Ref>(ref));
-				st_.store(suspending, std::memory_order_relaxed);
 			}
 
 			union {
@@ -130,6 +119,71 @@ namespace coflux {
 
 			std::atomic<status> st_;
 			error_type error_;
+		};
+
+		template <typename Ty>
+		struct unsync_result {
+			using value_type = Ty;
+			using error_type = std::exception_ptr;
+
+			unsync_result() : error_(nullptr), st_(unprepared), emplaced_(false) {}
+			~unsync_result() {
+				if (emplaced_) {
+					value_.~value_type();
+				}
+				else if (st_ == failed) {
+					error_ = nullptr;
+					error_.~error_type();
+				}
+			}
+
+			unsync_result(const unsync_result&)			   = delete;
+			unsync_result(unsync_result&&)				   = delete;
+			unsync_result& operator=(const unsync_result&) = delete;
+			unsync_result& operator=(unsync_result&&)      = delete;
+
+			template <typename Ref>
+			void replace_value(Ref&& ref) noexcept(std::is_nothrow_constructible_v<value_type, Ref>) {
+				if (emplaced_) {
+					value_.~value_type();
+				}
+				emplaced_ = true;
+				new (std::addressof(value_)) value_type(std::forward<Ref>(ref));
+				st_ = suspending;
+			}
+
+			void emplace_error(const error_type& err) noexcept {
+				new (std::addressof(error_)) error_type(err);
+				st_ = failed;
+			}
+
+			status get_status() noexcept {
+				return st_;
+			}
+
+			const value_type& value()const& {
+				return value_;
+			}
+
+			value_type&& value()&& {
+				return std::move(value_);
+			}
+
+			const error_type& error()& {
+				return error_;
+			}
+
+			error_type&& error()&& {
+				return std::move(error_);
+			}
+
+			union {
+				value_type value_;
+				error_type error_;
+			};
+
+			status st_;
+			bool emplaced_;
 		};
 	}
 }

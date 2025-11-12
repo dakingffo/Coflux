@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <numeric>
+#include <cassert>
 #include <coflux/scheduler.hpp>
 #include <coflux/combiner.hpp>
 #include <coflux/task.hpp>
