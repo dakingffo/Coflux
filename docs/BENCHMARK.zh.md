@@ -40,7 +40,7 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **核心开销 (Pool)** | `noop_executor` | $10^5 \text{ Forks}$ | $\mathbf{\sim 390 \text{ 万/秒}}$ | $\mathbf{\sim 256 \text{ 纳秒/Fork}}$ | 框架核心开销 + PMR 内存重用。 |
 | **M:N 并发调度** | `thread_pool_executor` | $10^6 \text{ Forks}$ | $\mathbf{\sim 195 \text{ 万/秒}}$ | $\mathbf{\sim 513 \text{ 纳秒/Fork}}$ | 核心开销 + **Work-Stealing 调度与同步**。 |
-| **Pipeline 吞吐量** | `thread_pool_executor` | $C=8, D=5$ | $\mathbf{\sim 214 \text{ 千/秒}}$ | $\mathbf{\sim 4.67 \text{ \text{µs}}/ \text{Pipeline}}$ | 序列依赖，高频挂起/恢复。 |
+| **Pipeline 吞吐量** | `thread_pool_executor` | $C=8, D=5$ | $\mathbf{\sim 214 \text{ 千/秒}}$ | $\mathbf{\sim 4.67 \text{ 微秒/Pipeline}}$ | 序列依赖，高频挂起/恢复。 |
 
 *注：延迟通过 $1 / \text{items\_per\_second}$ 计算得出。Pipeline 吞吐量单位为**每秒完成的整个 Pipeline 流程数量**。*
 

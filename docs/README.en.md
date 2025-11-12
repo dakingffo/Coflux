@@ -51,9 +51,9 @@ Coflux is architected around the philosophy of **"Static Channels,"** aiming to 
 | **Single-Task Core Overhead** | $\mathbf{\sim 256 \text{ ns}}$ / Fork | The core framework mechanism is **extremely lightweight**, resulting in very low coroutine life-cycle cost. |
 | **Net M:N Scheduling Overhead** | **$\mathbf{\sim 257 \text{ ns}}$** | The Work-Stealing scheduler scales tasks **efficiently across multiple cores** at a minimal cost. |
 | **High Concurrency Throughput** | **$\mathbf{\sim 1.95 \text{ M/s}}$** | Sustains a robust throughput of **1.95 Million operations per second** under high contention, demonstrating the **stability and robustness** of the synchronization mechanism. |
-| **Sequential Dependency Handling** | **$\mathbf{\sim 1 \text{ \text{µs}}}$** / Stage | Very low latency for the complete coroutine suspend-schedule-resume cycle, making it **ideal for I/O-intensive Pipelines**. |
+| **Sequential Dependency Handling** | **$\mathbf{\sim 1 \text{ µs}}$** / Stage | Very low latency for the complete coroutine suspend-schedule-resume cycle, making it **ideal for I/O-intensive Pipelines**. |
 
-For detailed methodology, hardware specifications, and complete data analysis, please refer to **[BENCHMARK.md](https://www.google.com/search?q=./BENCHMARK.zh.md)**.
+For detailed methodology, hardware specifications, and complete data analysis, please refer to **[BENCHMARK.md](./BENCHMARK.en.md)**.
 
 ## Core Value Proposition of Coflux
 
