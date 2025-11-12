@@ -42,7 +42,7 @@ The table below summarizes the key performance metrics across the different scen
 | **M:N Concurrency** | `thread_pool_executor` | $10^6 \text{ Forks}$ | $\mathbf{\sim 1.95 \text{ M/s}}$ | $\mathbf{\sim 513 \text{ ns/Fork}}$ | Core Overhead + **Work-Stealing Scheduling & Sync**. |
 | **Pipeline Throughput** | `thread_pool_executor` | $C=8, D=5$ | $\mathbf{\sim 214 \text{ K/s}}$ | $\mathbf{\sim 4.67 \text{ µs/Pipeline}}$ | Sequential dependency, high-frequency suspension/resumption. |
 
-*(Latency is calculated as $1 / \text{items\_per\_second}$. Pipeline throughput is measured as the number of **complete Pipeline executions per second**.)*
+*(Pipeline throughput is measured as the number of **complete Pipeline executions per second**.)*
 
 ---
 
