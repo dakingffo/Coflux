@@ -163,11 +163,13 @@ The design vision of Coflux is to partition a complete job into multiple `fork`s
 
 #### Executor
 
-The executor is extensible. Any class possessing the following public member function can be an executor (i.e., satisfy the *executive* concept).
+The executor is extensible. Any class possessing one of the following public member function can be an executor (i.e., satisfy the *executive* concept).
 
 ```c++
 template <typename Func, typename...Args>
 auto execute(Func&&, Args&&...);
+// or
+auto execute(std::coroutine_handle<>);
 ```
 
 The return value of `execute` is completely ignored by Coflux.

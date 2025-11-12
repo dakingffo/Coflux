@@ -2,72 +2,80 @@
 
 ## 引言
 
-性能是 Coflux 设计哲学的基石。本文档详述了旨在衡量 Coflux 核心任务生命周期管理（特别是 `coflux::fork` 实例的创建、执行和销毁）所涉及的**绝对最小开销**的微基准测试。
+性能是 Coflux 设计哲学的基石。本文档详述了旨在衡量 Coflux 核心任务生命周期管理（特别是 `coflux::fork` 实例的创建、执行和销毁）所涉及的**绝对最小开销**、**多核调度效率**以及**序列依赖处理能力**的基准测试。
 
-测试结果验证了 **“静态的沟渠”** 架构、**task/fork与任务即上下文**模型，以及与 **C++ PMR（多态内存资源）** 标准的深度集成在理想条件下实现异步操作**接近零开销**的有效性。
+测试结果旨在验证 Coflux 架构（包括结构化并发、C++ PMR 集成和 Work-Stealing 调度器）在不同并发模型下实现高性能和可预测性的能力。
 
 ## 方法论
 
 ### 基准测试场景
 
-基准测试测量了创建、立即 `co_await`（在 `noop_executor` 上）和销毁大量 `coflux::fork<void, coflux::noop_executor>` 实例的吞吐量和延迟。使用的 `trivial_fork` 协程体为空（`co_return;`），确保测量结果反映的是框架自身的开销，而非工作负载的执行时间。
+本文档涵盖了三大类测试场景：
 
-### 使用的执行器
+1.  **核心开销基准 (`noop_executor`)**: 测量创建、立即 `co_await`（在调用线程上）和销毁大量 `coflux::fork` 实例的吞吐量。用于反映框架自身的**最小纯开销**，排除了调度和线程切换的影响。
+2.  **M:N 并发调度基准 (`thread_pool_executor`)**: 采用 **M 个协程到 N 个线程**的模型。测量在高负载、高竞争环境下，任务的创建、提交、Work-Stealing 窃取和完成的并发吞吐量。用于反映调度器的**负载均衡和线程同步效率**。
+3.  **Pipeline 吞吐量基准 (`thread_pool_executor`)**: 测量处理具有**深层序列依赖关系**的协程链（Pipeline）时的吞吐量。用于反映调度器在**高频率的协程挂起/恢复和上下文切换**时的延迟开销。
 
-* **`coflux::noop_executor`**: 此执行器立即在调用线程上执行函数。使用它来隔离基准测试中线程上下文切换的开销，纯粹聚焦于协程和框架机制。
+### 关键配置
 
-### 测试的内存资源
+* **执行器**: **`coflux::thread_pool_executor`**（Work-Stealing 调度器）和 **`coflux::noop_executor`**（单线程直通执行器）。
+* **内存资源**: 统一采用 **PMR 内存资源**（如 `synchronized_pool_resource`），以确保最小化的内存分配开销。
 
-测试了两种不同的 `std::pmr::memory_resource` 配置，以展示在不同内存管理策略下的性能：
+### 工具与环境
 
-1.  **`std::pmr::monotonic_buffer_resource` (`BM_Pmr_ForkCreation`)**:
-    * **目的**: 衡量内存分配成本降至接近零（指针碰撞）时的理论最大吞吐量。内存从一个大缓冲区中线性分配，并且仅在资源被销毁时（每次基准测试迭代结束时）才释放。
-    * **实现**: 使用在堆上分配的 1GB 缓冲区（`std::vector<std::byte>`）作为 `monotonic_buffer_resource` 的服务内存。
+| 属性 | 配置 |
+| :--- | :--- |
+| **测试工具** | Google Benchmark 库 |
+| **CPU** | AMD Ryzen™ 9 7940H (Zen 4, 8 核心 / 16 线程, 16MB L3 缓存) |
+| **操作系统** | Windows |
+| **编译器** | Microsoft Visual C++ (MSVC, Release x64 模式编译) |
 
-2.  **`std::pmr::unsynchronized_pool_resource` (`BM_PmrPool_ForkCreationAndDestruction`)**:
-    * **目的**: 衡量涉及内存重用的更实际场景的性能。此测试包括 `fork` 创建（`allocate`）和通过 `co_await coflux::this_task::destroy_forks()` 进行的显式销毁（`deallocate`）的成本，模拟内存在一个作用域内被积极管理的负载。
-    * **实现**: 使用 `unsynchronized_pool_resource`，并以同样的 1GB `monotonic_buffer_resource` 作为其上游分配器。
+---
 
-### 工具
+## 测试结果总结
 
-* **Google Benchmark**: 基准测试使用 Google Benchmark 库 ([https://github.com/google/benchmark](https://github.com/google/benchmark)) 实现和执行。
+下表总结了 Coflux 在不同场景下的关键性能指标：
 
-## 硬件与软件环境
+| 基准测试场景 | 执行器类型 | 关键参数 | 峰值吞吐量 | 约峰值延迟 | 关键开销 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **核心开销 (Pool)** | `noop_executor` | $10^5 \text{ Forks}$ | $\mathbf{\sim 390 \text{ 万/秒}}$ | $\mathbf{\sim 256 \text{ 纳秒/Fork}}$ | 框架核心开销 + PMR 内存重用。 |
+| **M:N 并发调度** | `thread_pool_executor` | $10^6 \text{ Forks}$ | $\mathbf{\sim 195 \text{ 万/秒}}$ | $\mathbf{\sim 513 \text{ 纳秒/Fork}}$ | 核心开销 + **Work-Stealing 调度与同步**。 |
+| **Pipeline 吞吐量** | `thread_pool_executor` | $C=8, D=5$ | $\mathbf{\sim 214 \text{ 千/秒}}$ | $\mathbf{\sim 4.67 \text{ \text{µs}}/ \text{Pipeline}}$ | 序列依赖，高频挂起/恢复。 |
 
-* **CPU**: AMD Ryzen™ 9 7940H (Zen 4, 8 核心 / 16 线程, 最高 5.2 GHz Boost, 16MB L3 缓存)
-* **RAM**: 16GB DDR5
-* **操作系统**: Windows
-* **编译器**: Microsoft Visual C++ (MSVC, Release x64 模式编译)
-* **库**: 此 CPU/内存密集型基准测试**未使用** `liburing`。
+*注：延迟通过 $1 / \text{items\_per\_second}$ 计算得出。Pipeline 吞吐量单位为**每秒完成的整个 Pipeline 流程数量**。*
 
-## 测试结果
+---
 
-下表总结了获得的关键结果：
+## 综合性能分析
 
-| 基准测试场景 | 峰值操作次数 (Forks) | 峰值吞吐量 (Items/Sec) | 约峰值延迟 (CPU Time/Op) | 备注 |
-| :--- | :--- | :--- | :--- | :--- |
-| `BM_Pmr_ForkCreation` | 1,000,000 | **~1440 万/秒** | **~69 纳秒** | Monotonic 分配器，仅创建 |
-| `BM_PmrPool_ForkCreationAndDestruction` | 100,000 | **~390 万/秒** | **~256 纳秒** | Pool 分配器，创建 + 销毁 |
+### 1. 核心开销与最小延迟
 
-*（延迟通过 $1 / \text{items\_per\_second}$ 计算得出。）*
+`BM_PmrPool_ForkCreationAndDestruction` 的结果 ($\mathbf{\sim 256 \text{ ns/Fork}}$) 代表了 Coflux 框架在启用内存重用时，一个协程生命周期（创建、执行、PMR 分配、销毁）的**最小往返开销**。
 
-**观察结果:**
+* **价值**: 在现代 CPU 上，将协程任务管理开销控制在 $\mathbf{300 \text{ 纳秒}}$ 以内，证明了 Coflux 核心抽象的**高效性**和**轻量级**。
 
-* **Monotonic 性能**: 峰值吞吐量出现在约 100 万次操作附近，超过了**每秒 1400 万次 fork 生命周期**。在更高的操作次数下，随后的性能下降清晰地表明了 CPU L3 缓存限制（此 CPU 上为 16MB）的影响，证实瓶颈从软件开销转向了硬件内存延迟。
-* **Pool 性能**: 创建和销毁循环的峰值吞吐量出现在最低操作次数（10 万次），达到了近**每秒 400 万次往返操作**。与 Monotonic 场景相比，性能下降趋势平缓得多，突显了通过内存池重用内存所带来的出色缓存局部性。
+### 2. M:N 并发调度效率：多核扩展性能
 
-## 分析
+通过对比单线程核心开销与多线程并发调度的总开销，可以精确量化 Work-Stealing 机制的效率：
 
-1.  **核心开销接近零**: Monotonic 基准测试证实，在理想内存条件下，Coflux 的核心机制（通过 PMR 进行协程帧分配、Promise 构造、环境传播、`co_await` 机制）对每个 fork 生命周期施加的**开销低于 100 纳秒**。这验证了“零成本抽象”的目标。
+$$\text{多线程净增调度成本} \approx \mathbf{513 \text{ ns}} \text{ (M:N)} - \mathbf{256 \text{ ns}} \text{ (单线程)} = \mathbf{257 \text{ 纳秒}}$$
 
-2.  **高效的内存重用**: Pool 基准测试表明，即使包含内存释放成本（`destroy_forks()` 触发 Pool 的 `deallocate`），Coflux 仍保持极高的吞吐量（每秒数百万次操作）。使用内存池进行完整的创建-销毁往返操作，其约 250ns 的延迟对于托管的异步任务而言，已属于业界**领先水平**。
+* **调度成本**: Coflux 的 Work-Stealing 调度器仅引入了约 $\mathbf{257 \text{ 纳秒}}$ 的额外成本，就将任务从单线程安全地扩展到了多核并行环境。
+* **同步效率**: 这 $\mathbf{257 \text{ 纳秒}}$ 包含了所有线程间的同步竞争和负载均衡开销。它表明 Coflux 的调度器设计在**高竞争负载**下，能以**非常高效**的方式进行线程协同和任务分配。
 
-3.  **Pool 的缓存局部性优势**: Pool 基准测试的性能曲线比 Monotonic 基准测试的曲线明显更平坦，强调了内存重用对于大规模、长期运行应用保持持续性能的重要性。内存池有效地将工作内存保持在 CPU 缓存内。
+### 3. 序列依赖处理能力：Pipeline 效率
 
-4.  **硬件瓶颈**: 这两个基准测试都表明，对于此类密集的、细粒度的任务创建，主要性能瓶颈迅速转向 CPU 缓存大小和内存带宽，而不是 Coflux 框架本身。
+Pipeline 测试衡量了协程在高频率**挂起/恢复**时的延迟，这是 I/O 密集型应用的关键指标。
+
+* **单阶段切换延迟**: 通过量化 $D=5$ 和 $D=20$ 阶段的延迟差异，得出平均每增加一个顺序依赖的协程阶段，所增加的延迟约为 **1000 纳秒**（$\mathbf{1 \text{ 微秒}}$）。
+* **处理能力**: 在多线程 Work-Stealing 环境下，一个**完整的协程挂起-调度-恢复**循环仅需 **1 微秒**。这一结果表明 Coflux 在处理具有深层依赖的业务流时，具有**出色的抗延迟性**，调度器能以**极具竞争力**的开销完成上下文切换。
 
 ## 结论
 
-基准测试结果有力地验证了 Coflux 的设计原则。通过利用 C++20 协程、结构化并发、PMR 分配器以及细致的底层实现（包括解决内存排序问题），Coflux 在核心异步任务管理方面实现了**优越的性能**。
+Coflux 框架在核心性能的三个关键维度上展示了**卓越的表现**：
 
-在核心路径上展示的低于 100ns 的开销，以及在启用主动内存管理时仍能达到的每秒数百万次操作的吞吐量，使 Coflux 成为构建要求苛刻的低延迟和高吞吐量并发系统的绝佳基础。
+1.  **极低的底层开销**，保证了任务的轻量级。
+2.  **Work-Stealing 调度器的高效扩展能力**，确保了高并发下的负载均衡和低同步成本。
+3.  **快速的协程上下文切换**，使框架适用于高频率挂起/恢复的 I/O 密集型任务。
+
+这些性能数据，连同 Coflux **结构化并发 (`task/fork`)** 所提供的**安全性和健壮性**，共同证明了 Coflux 是一个功能强大、性能可靠的 C++20 协程运行时平台。

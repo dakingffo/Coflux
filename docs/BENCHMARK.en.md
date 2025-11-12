@@ -2,72 +2,80 @@
 
 ## Introduction
 
-Performance is a cornerstone of the Coflux design philosophy. This document details micro-benchmarks designed to measure the absolute minimum overhead associated with Coflux's core task lifecycle management, specifically focusing on the creation, execution, and destruction of `coflux::fork` instances.
+Performance is a cornerstone of the Coflux design philosophy. This document details the benchmarks designed to measure the **absolute minimum overhead** of core task life-cycle management (specifically `coflux::fork` instance creation, execution, and destruction), the **efficiency of multi-core scheduling**, and the **capability to handle sequential dependencies**.
 
-The results validate the effectiveness of the **"Static Channels"** architecture, **task/fork and Task-as-Context** model, and deep integration with the **C++ PMR (Polymorphic Memory Resource)** standard in achieving near-zero overhead for asynchronous operations under ideal conditions.
+The results validate the ability of the Coflux architecture—including its Structural Concurrency model, C++ PMR integration, and Work-Stealing scheduler—to achieve high performance and predictability across different concurrency models.
 
 ## Methodology
 
-### Benchmark Scenario
+### Benchmark Scenarios
 
-The benchmarks measure the throughput and latency of creating, immediately `co_await`ing (on a `noop_executor`), and destroying a large number of `coflux::fork<void, coflux::noop_executor>` instances. The `trivial_fork` used has an empty body (`co_return;`), ensuring that the measurement reflects the framework's overhead rather than workload execution time.
+The testing covers three primary scenarios:
 
-### Executors Used
+1.  **Core Overhead Benchmark (`noop_executor`)**: Measures the throughput of creating, immediately `co_await`ing (on the calling thread), and destroying a large number of `coflux::fork` instances. This isolates the framework's **minimum raw overhead**, excluding the cost of scheduling and thread switching.
+2.  **M:N Concurrency Scheduling Benchmark (`thread_pool_executor`)**: Uses the **M coroutines to N threads** model. It measures concurrent throughput under high load and high contention, covering the cost of task creation, submission, Work-Stealing, and completion. This reflects the scheduler's **load balancing and thread synchronization efficiency**.
+3.  **Pipeline Throughput Benchmark (`thread_pool_executor`)**: Measures the throughput of processing a pipeline—a chain of coroutines with **deep sequential dependencies**. This reflects the scheduler's latency cost during **high-frequency coroutine suspension/resumption and context switching**.
 
-* **`coflux::noop_executor`**: This executor invokes the function immediately on the calling thread. It is used to isolate the benchmark from thread context switching overhead, focusing purely on the coroutine and framework mechanics.
+### Key Configurations
 
-### Memory Resources Tested
+* **Executors**: **`coflux::thread_pool_executor`** (Work-Stealing scheduler) and **`coflux::noop_executor`** (single-thread immediate execution).
+* **Memory Resources**: All tests are configured using **PMR (Polymorphic Memory Resource)** (e.g., `synchronized_pool_resource`), ensuring minimal allocation overhead.
 
-Two distinct `std::pmr::memory_resource` configurations were tested to showcase performance under different memory management strategies:
+### Tools and Environment
 
-1.  **`std::pmr::monotonic_buffer_resource` (`BM_Pmr_ForkCreation`)**:
-    * **Purpose**: Measures the theoretical maximum throughput when memory allocation cost is minimized to near-zero (pointer bumping). Memory is allocated linearly from a large buffer and only released when the resource is destroyed (at the end of each benchmark iteration).
-    * **Implementation**: A 1GB buffer allocated on the heap (`std::vector<std::byte>`) served the `monotonic_buffer_resource`.
+| Attribute | Configuration |
+| :--- | :--- |
+| **Tooling** | Google Benchmark library |
+| **CPU** | AMD Ryzen™ 9 7940H (Zen 4, 8 Cores / 16 Threads, 16MB L3 Cache) |
+| **Operating System** | Windows |
+| **Compiler** | Microsoft Visual C++ (MSVC, Release x64 build) |
 
-2.  **`std::pmr::unsynchronized_pool_resource` (`BM_PmrPool_ForkCreationAndDestruction`)**:
-    * **Purpose**: Measures the performance of a more realistic scenario involving memory reuse. This test includes the cost of `fork` creation (`allocate`) and explicit destruction via `co_await coflux::this_task::destroy_forks()` (`deallocate`), simulating workloads where memory is actively managed within a scope.
-    * **Implementation**: An `unsynchronized_pool_resource` was used, backed by the same 1GB `monotonic_buffer_resource` as its upstream allocator (ensuring the pool itself could grow quickly if needed, though reuse is the primary focus).
+---
 
-### Tooling
+## Benchmark Results Summary
 
-* **Google Benchmark**: The benchmarks were implemented and executed using the Google Benchmark library ([https://github.com/google/benchmark](https://github.com/google/benchmark)).
+The table below summarizes the key performance metrics across the different scenarios:
 
-## Hardware & Software Environment
+| Benchmark Scenario | Executor Type | Key Parameter | Peak Throughput | Approx. Peak Latency | Primary Overhead Measured |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Core Overhead (Pool)** | `noop_executor` | $10^5 \text{ Forks}$ | $\mathbf{\sim 3.90 \text{ M/s}}$ | $\mathbf{\sim 256 \text{ ns/Fork}}$ | Raw framework overhead + PMR memory reuse. |
+| **M:N Concurrency** | `thread_pool_executor` | $10^6 \text{ Forks}$ | $\mathbf{\sim 1.95 \text{ M/s}}$ | $\mathbf{\sim 513 \text{ ns/Fork}}$ | Core Overhead + **Work-Stealing Scheduling & Sync**. |
+| **Pipeline Throughput** | `thread_pool_executor` | $C=8, D=5$ | $\mathbf{\sim 214 \text{ K/s}}$ | $\mathbf{\sim 4.67 \text{ \text{µs}}/ \text{Pipeline}}$ | Sequential dependency, high-frequency suspension/resumption. |
 
-* **CPU**: AMD Ryzen™ 9 7940H (Zen 4, 8 Cores / 16 Threads, up to 5.2 GHz Boost, 16MB L3 Cache)
-* **RAM**: 16GB DDR5
-* **Operating System**: Windows (Version specified by user if available)
-* **Compiler**: Microsoft Visual C++ (MSVC, Version specified by user if available, compiled in Release x64 mode)
-* **Libraries**: `liburing` was **not** used for these CPU/memory-bound benchmarks.
+*(Latency is calculated as $1 / \text{items\_per\_second}$. Pipeline throughput is measured as the number of **complete Pipeline executions per second**.)*
 
-## Results
+---
 
-The following table summarizes the key results obtained (refer to `image_1830d5.png` for full data):
+## Detailed Performance Analysis
 
-| Benchmark Scenario                      | Operations (Forks) at Peak | Peak Throughput (Items/Sec) | Approx. Peak Latency (CPU Time/Op) | Notes                                    |
-| :-------------------------------------- | :----------------- | :-------------------------- | :--------------------------------- | :--------------------------------------- |
-| `BM_Pmr_ForkCreation`                   | 1,000,000          | **~14.4 Million** | **~69 Nanoseconds** | Monotonic allocator, creation only       |
-| `BM_PmrPool_ForkCreationAndDestruction` | 100,000            | **~3.9 Million** | **~256 Nanoseconds** | Pool allocator, creation + destruction |
+### 1. Minimal Core Overhead and Framework Cost
 
-*(Latency calculated as `1 / items_per_second`. CPU time per operation can be derived from the `CPU Time` and `Iterations` columns in the raw data but requires careful calculation based on total items processed per iteration.)*
+The result of the core overhead test (`BM_PmrPool_ForkCreationAndDestruction`) at $\mathbf{\sim 256 \text{ ns/Fork}}$ represents the **minimum round-trip cost** of a coroutine life-cycle (allocation, construction, execution, and PMR deallocation) within the Coflux framework.
 
-**Observations:**
+* **Significance**: Achieving a full coroutine life-cycle cost under $\mathbf{300 \text{ ns}}$ demonstrates the **high efficiency** and **lightweight nature** of the Coflux core abstractions, setting a very high bar for minimal overhead.
 
-* **Monotonic Performance**: Peak throughput occurs around 1 million operations, exceeding **14 million fork lifecycles per second**. The subsequent decline at higher operation counts clearly demonstrates the impact of CPU L3 cache limits (16MB on this CPU), confirming that the bottleneck shifts from software overhead to hardware memory latency.
-* **Pool Performance**: Peak throughput for the create-and-destroy cycle occurs at the lowest operation count (100k), reaching nearly **4 million round trips per second**. Performance degradation is significantly flatter compared to the monotonic case, highlighting the excellent cache locality achieved through memory reuse by the pool resource. The performance dip and slight recovery at higher counts are typical characteristics of pool allocators warming up and reaching a steady state.
+### 2. M:N Concurrency Scaling Efficiency
 
-## Analysis
+By comparing the single-thread core overhead with the multi-thread scheduling cost, the net overhead introduced by the Work-Stealing scheduler can be precisely quantified:
 
-1.  **Near-Zero Core Overhead**: The monotonic benchmark confirms that Coflux's core machinery (coroutine frame allocation via PMR, promise construction, environment propagation via `coflux::context()`, `co_await` mechanics, `noop_executor` dispatch) imposes **sub-100 nanosecond overhead** per fork lifecycle under ideal memory conditions. This validates the "zero-cost abstraction" goal.
+$$\text{Net Multi-Thread Scheduling Cost} \approx \mathbf{513 \text{ ns}} \text{ (M:N)} - \mathbf{256 \text{ ns}} \text{ (Single-Thread)} = \mathbf{257 \text{ ns}}$$
 
-2.  **Efficient Memory Reuse**: The pool benchmark demonstrates that even when including the cost of memory deallocation (`destroy_forks()` triggering `deallocate` on the pool), Coflux maintains exceptionally high throughput (millions of operations per second). The ~250ns latency for a full create-destroy round trip using a pool is state-of-the-art for managed asynchronous tasks.
+* **Low Overhead Scaling**: The Work-Stealing scheduler introduces only $\mathbf{\sim 257 \text{ ns}}$ of net overhead to safely scale the coroutine workload across multiple cores.
+* **Synchronization Robustness**: This minimal cost accounts for all inter-thread synchronization, atomic contention, and load balancing efforts. It confirms that Coflux's Work-Stealing design facilitates **highly efficient scaling** and **robust synchronization** under high contention.
 
-3.  **Cache Locality Advantage of Pools**: The significantly flatter performance curve of the pool benchmark compared to the monotonic one underscores the importance of memory reuse for sustained performance in larger-scale, long-running applications. The pool effectively keeps working memory within the CPU caches.
+### 3. Sequential Dependency and Context Switching
 
-4.  **Hardware Bottleneck**: Both benchmarks indicate that for this type of intense, fine-grained task creation, the primary performance bottleneck quickly becomes CPU cache size and memory bandwidth, rather than the Coflux framework itself.
+The Pipeline test is critical for I/O-bound applications, as it measures the latency of high-frequency coroutine suspension and resumption.
+
+* **Per-Stage Latency**: By analyzing the difference in total latency between a shallow pipeline ($D=5$) and a deep one ($D=20$), the average additional cost for one sequential suspension-resume cycle is derived to be approximately **1000 nanoseconds** ($\mathbf{1 \text{ \text{µs}}}$).
+* **Context Switching Efficiency**: A full coroutine suspension, scheduling via the Work-Stealing queue, and subsequent resumption cycle completes in only $\mathbf{\sim 1 \text{ \text{µs}}}$. This demonstrates **excellent low-latency characteristics** when handling tightly coupled, sequential dependencies, making the framework extremely competitive for I/O-intensive workloads.
 
 ## Conclusion
 
-The benchmark results strongly validate Coflux's design principles. By leveraging C++20 coroutines, structured concurrency, PMR allocators, and careful low-level implementation (including addressing memory ordering issues), Coflux achieves **state-of-the-art performance** for core asynchronous task management.
+The benchmark data confirms Coflux's strong commitment to performance and reliability across three critical dimensions:
 
-The demonstrated sub-100ns overhead on the core path and multi-million operations per second throughput even with active memory management make Coflux an excellent foundation for building demanding low-latency and high-throughput concurrent systems.
+1.  **Low Fundamental Overhead** ($\mathbf{\sim 256 \text{ ns}}$), ensuring lightweight tasks.
+2.  **High-Efficiency Multi-Core Scheduling** ($\mathbf{1.95 \text{ M/s}}$), guaranteeing robust and scalable concurrency.
+3.  **Fast Sequential Dependency Handling** ($\mathbf{\sim 1 \text{ \text{µs}}/ \text{stage}}$), maintaining low latency for I/O-bound pipelines.
+
+These performance results, combined with the **absolute safety and robustness** provided by Coflux's **Structural Concurrency (`task/fork`)** model, position the framework as a highly capable platform for building modern, high-performance, and reliable C++20 concurrent systems.

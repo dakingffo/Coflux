@@ -6,10 +6,10 @@
 #define COFLUX_UNBOUNDED_QUEUE_HPP
 
 #include "../forward_declaration.hpp"
-#include "sync_circular_buffer.hpp"
+#include "ring.hpp"
 
 namespace coflux {
-	template <typename Container = sync_circular_buffer<std::coroutine_handle<>>>
+	template <typename Container = unsync_ring<std::coroutine_handle<>>>
 	class unbounded_queue {
 	public:
 		using container_type  = Container;
@@ -44,34 +44,16 @@ namespace coflux {
 			return size_.load(std::memory_order_acquire) == 0;
 		}
 
-		size_type size() noexcept {
+		size_type size_approx() noexcept {
 			return size_.load(std::memory_order_acquire);
 		}
 
-		template <typename Ref>
-		void emplace(Ref&& value) {
-			for (int i = 0; i < 32; i++) {
-				if (mtx_.try_lock()) {
-					cont_.push_back(std::forward<Ref>(value));
-					size_.fetch_add(1, std::memory_order_release);
-					mtx_.unlock();
-					not_empty_cv_.notify_one();
-					return;
-				}
-				std::this_thread::yield();
-			}
-			std::lock_guard<std::mutex> lock(mtx_);
-			cont_.push_back(std::forward<Ref>(value));
-			size_.fetch_add(1, std::memory_order_release);
-			not_empty_cv_.notify_one();
-		}
-
 		void push(const_reference value) {
-			emplace(value);
+			enqueue(value);
 		}
 
 		void push(reference& value) {
-			emplace(std::move(value));
+			enqueue(std::move(value));
 		}
 
 		bool pop(const std::atomic_bool& continuation = true) {
@@ -89,7 +71,29 @@ namespace coflux {
 			return true;
 		}
 
-		value_type poll(const std::atomic_bool& continuation = true) {
+		template <typename Ref>
+		void enqueue(Ref&& value) {
+			for (int i = 0; i < 32; i++) {
+				if (mtx_.try_lock()) {
+					cont_.push_back(std::forward<Ref>(value));
+					size_.fetch_add(1, std::memory_order_release);
+					mtx_.unlock();
+					not_empty_cv_.notify_one();
+					return;
+				}
+				if (i & 1) {
+					std::this_thread::yield();
+				}
+			}
+
+
+			std::lock_guard<std::mutex> lock(mtx_);
+			cont_.push_back(std::forward<Ref>(value));
+			size_.fetch_add(1, std::memory_order_release);
+			not_empty_cv_.notify_one();
+		}
+
+		value_type dequeue(const std::atomic_bool& continuation = true) {
 			std::unique_lock<std::mutex> lock(mtx_);
 			not_empty_cv_.wait(lock, [this, &continuation]() {
 				return size_.load(std::memory_order_relaxed) > 0 || !continuation.load(std::memory_order_relaxed);
@@ -106,7 +110,7 @@ namespace coflux {
 		}
 
 		template <typename Rep, typename Period>
-		value_type poll(const std::atomic_bool& continuation, const std::chrono::duration<Rep, Period>& wait_time) {
+		value_type dequeue_timed(const std::atomic_bool& continuation, const std::chrono::duration<Rep, Period>& wait_time) {
 			std::unique_lock<std::mutex> lock(mtx_);
 			bool wait_result = not_empty_cv_.wait_for(lock, wait_time, [this, &continuation]() {
 				return size_.load(std::memory_order_relaxed) > 0 || !continuation.load(std::memory_order_relaxed);
@@ -122,22 +126,21 @@ namespace coflux {
 			return element;
 		}
 
-		size_type poll_bulk(
-			value_type* buffer,
-			std::size_t				begin,
-			std::size_t			    capacity,
-			const std::atomic_bool& continuation
+		template <typename ForwardIt>
+		size_type wait_dequeue_bulk(
+			ForwardIt				buffer,
+			std::size_t			    capacity
 		) {
 			std::unique_lock<std::mutex> lock(mtx_);
-			not_empty_cv_.wait(lock, [this, &continuation]() {
-				return size_.load(std::memory_order_relaxed) > 0 || !continuation.load(std::memory_order_relaxed);
+			not_empty_cv_.wait(lock, [this]() {
+				return size_.load(std::memory_order_relaxed) > 0;
 				});
-			if (!continuation || size_.load(std::memory_order_relaxed) == 0) {
+			if (size_.load(std::memory_order_relaxed) == 0) {
 				return 0;
 			}
 			std::size_t counter = 0;
 			for (; counter < std::min(capacity, size_.load(std::memory_order_relaxed)); counter++) {
-				buffer[(begin + counter) & (capacity - 1)] = cont_.front();
+				*buffer++ = cont_.front();
 				cont_.pop_front();
 			}
 			if (size_.fetch_sub(counter, std::memory_order_release)) {
@@ -146,24 +149,22 @@ namespace coflux {
 			return counter;
 		}
 
-		template <typename Rep, typename Period>
-		size_type poll_bulk(
-			value_type* buffer,
-			std::size_t								  begin,
+		template <typename ForwardIt, typename Rep, typename Period>
+		size_type wait_dequeue_bulk_timed(
+			ForwardIt                                 buffer,
 			std::size_t							      capacity,
-			const std::atomic_bool& continuation,
 			const std::chrono::duration<Rep, Period>& wait_time
 		) {
 			std::unique_lock<std::mutex> lock(mtx_);
-			bool wait_result = not_empty_cv_.wait_for(lock, wait_time, [this, &continuation]() {
-				return size_.load(std::memory_order_relaxed) > 0 || !continuation.load(std::memory_order_relaxed);
+			bool wait_result = not_empty_cv_.wait_for(lock, wait_time, [this]() {
+				return size_.load(std::memory_order_relaxed) > 0;
 				});
-			if (!continuation || size_.load(std::memory_order_relaxed) == 0 || !wait_result) {
+			if (size_.load(std::memory_order_relaxed) == 0 || !wait_result) {
 				return 0;
 			}
 			int counter = 0;
 			for (; counter < std::min(capacity, size_.load(std::memory_order_relaxed)); counter++) {
-				buffer[(begin + counter) & (capacity - 1)] = cont_.front();
+				*buffer++ = cont_.front();
 				cont_.pop_front();
 			}
 			if (size_.fetch_sub(counter, std::memory_order_release)) {

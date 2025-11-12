@@ -303,9 +303,8 @@ namespace coflux {
     public:
         using task_type        = std::conditional_t<std::is_lvalue_reference_v<Range>, Range, std::remove_reference_t<Range>>;
         using value_type       = typename std::remove_cvref_t<decltype(*std::declval<Range>().begin())>::value_type;
-        using result_type      = std::conditional_t<std::is_object_v<value_type>, std::vector<value_type>, void>;
-        using result_proxy     = std::shared_ptr<std::conditional_t<
-            std::is_object_v<value_type>, std::pair<std::atomic_size_t, result_type>, std::atomic_size_t>>;
+        using result_type      = std::conditional_t<std::is_object_v<value_type>, std::vector<value_type>, std::monostate>;
+        using result_proxy     = std::shared_ptr<std::pair<std::atomic_size_t, result_type>>;
         using executor_traits  = coflux::executor_traits<Executor>;
         using executor_type    = typename executor_traits::executor_type;
         using executor_pointer = typename executor_traits::executor_pointer;
@@ -336,74 +335,84 @@ namespace coflux {
 
             auto callback = [handle, n = n_, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
             (auto& fork_result) {
-                std::size_t current_count = result->first.fetch_add(1, std::memory_order_acq_rel) + 1;
-                bool try_resume_from_this = false;
-                if (current_count > n) {
+                if constexpr (std::is_void_v<value_type>) {
                     return;
                 }
                 else {
-                    try_resume_from_this = (current_count == n);
-                }
-                std::lock_guard<std::mutex> guard(mtx);
-                if (fork_result.get_status().load(std::memory_order_acquire) != completed)
-                    COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-                    if (!error) {
-                        std::exception_ptr e = std::move(fork_result).error();
-                        if (fork_result.get_status().exchange(handled) != handled) {
-                            error = e;
-                        }
-                        else {
-                            error = std::make_exception_ptr(std::runtime_error("Can't get result because there is an exception."));
-                        }
-                        stop.request_stop();
+                    std::size_t current_count = result->first.fetch_add(1, std::memory_order_acq_rel) + 1;
+                    bool try_resume_from_this = false;
+                    if (current_count > n) {
+                        return;
                     }
-                }
-                else {
-                    result->second.emplace_back(std::forward<
-                        std::conditional_t<std::is_lvalue_reference_v<task_type>,
-                        std::remove_reference_t<decltype(fork_result)>&,
-                        std::remove_reference_t<decltype(fork_result)>>
-                        >(fork_result).value());
-                }
-                if (try_resume_from_this) {
-                    stop.request_stop();
-                    std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
-                    if (handle_to_resume) {
-                        executor_traits::execute(exec, handle_to_resume);
+                    else {
+                        try_resume_from_this = (current_count == n);
+                    }
+                    std::lock_guard<std::mutex> guard(mtx);
+                    if (fork_result.get_status().load(std::memory_order_acquire) != completed)
+                        COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+                        if (!error) {
+                            std::exception_ptr e = std::move(fork_result).error();
+                            if (fork_result.get_status().exchange(handled) != handled) {
+                                error = e;
+                            }
+                            else {
+                                error = std::make_exception_ptr(std::runtime_error("Can't get result because there is an exception."));
+                            }
+                            stop.request_stop();
+                        }
+                    }
+                    else {
+                        result->second.emplace_back(std::forward<
+                            std::conditional_t<std::is_lvalue_reference_v<task_type>,
+                            std::remove_reference_t<decltype(fork_result)>&,
+                            std::remove_reference_t<decltype(fork_result)>>
+                            >(fork_result).value());
+                    }
+                    if (try_resume_from_this) {
+                        stop.request_stop();
+                        std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
+                        if (handle_to_resume) {
+                            executor_traits::execute(exec, handle_to_resume);
+                        }
                     }
                 }
                 };
 
             auto void_callback = [handle, n = n_, result = result_, exec = executor_, &error = error_, &stop = stop_source_, &continuation = continuation_, &mtx = mtx_]
             (auto& fork_result) {
-                std::size_t current_count = result->first.fetch_add(1, std::memory_order_acq_rel) + 1;
-                bool try_resume_from_this = false;
-                if (current_count > n) {
+                if constexpr (std::is_object_v<value_type>) {
                     return;
                 }
                 else {
-                    try_resume_from_this = (current_count == n);
-                }
-                std::lock_guard<std::mutex> guard(mtx);
-                if (fork_result.get_status().load(std::memory_order_acquire) != completed)
-                    COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-                    std::lock_guard<std::mutex> lock(mtx);
-                    if (!error) {
-                        std::exception_ptr e = std::move(fork_result).error();
-                        if (fork_result.get_status().exchange(handled) != handled) {
-                            error = e;
-                        }
-                        else {
-                            error = std::make_exception_ptr(std::runtime_error("Can't get result because there is an exception."));
-                        }
-                        stop.request_stop();
+                    std::size_t current_count = result->first.fetch_add(1, std::memory_order_acq_rel) + 1;
+                    bool try_resume_from_this = false;
+                    if (current_count > n) {
+                        return;
                     }
-                }
-                if (try_resume_from_this) {
-                    stop.request_stop();
-                    std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
-                    if (handle_to_resume) {
-                        executor_traits::execute(exec, handle_to_resume);
+                    else {
+                        try_resume_from_this = (current_count == n);
+                    }
+                    std::lock_guard<std::mutex> guard(mtx);
+                    if (fork_result.get_status().load(std::memory_order_acquire) != completed)
+                        COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+                        std::lock_guard<std::mutex> lock(mtx);
+                        if (!error) {
+                            std::exception_ptr e = std::move(fork_result).error();
+                            if (fork_result.get_status().exchange(handled) != handled) {
+                                error = e;
+                            }
+                            else {
+                                error = std::make_exception_ptr(std::runtime_error("Can't get result because there is an exception."));
+                            }
+                            stop.request_stop();
+                        }
+                    }
+                    if (try_resume_from_this) {
+                        stop.request_stop();
+                        std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
+                        if (handle_to_resume) {
+                            executor_traits::execute(exec, handle_to_resume);
+                        }
                     }
                 }
                 };

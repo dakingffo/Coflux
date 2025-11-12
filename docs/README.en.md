@@ -42,18 +42,24 @@ Coflux's design is driven by several core concepts.
 
 To delve deeper into **Structured Concurrency**, **Task-as-Context**, and the introduction of the **Static Channel**, please refer to the **[Design and Architecture Document (ARCHITECTURE.md)](./ARCHITECTURE.en.md)**.
 
-## Performance: Near-Zero Cost
+## Performance Summary
 
-Coflux is designed for peak performance, targeting systems that must minimize the overhead of creating, scheduling, and managing asynchronous tasks. Our **Task-as-Context** model and deep **PMR (Polymorphic Memory Resource) integration** are key enabling mechanisms.
+Coflux is architected around the philosophy of **"Static Channels,"** aiming to deliver **minimal abstraction overhead** and **highly efficient multi-core scalability**. The following key performance metrics validate Coflux's standing in the C++20 coroutine runtime space:
 
-Micro-benchmarks conducted on an **AMD Ryzen 9 7940H (8 Cores/16 Threads, 5.2GHz)** using a `noop_executor` demonstrate Coflux's capabilities:
+| Key Metric | Result | Significance |
+| :--- | :--- | :--- |
+| **Single-Task Core Overhead** | $\mathbf{\sim 256 \text{ ns}}$ / Fork | The core framework mechanism is **extremely lightweight**, resulting in very low coroutine life-cycle cost. |
+| **Net M:N Scheduling Overhead** | **$\mathbf{\sim 257 \text{ ns}}$** | The Work-Stealing scheduler scales tasks **efficiently across multiple cores** at a minimal cost. |
+| **High Concurrency Throughput** | **$\mathbf{\sim 1.95 \text{ M/s}}$** | Sustains a robust throughput of **1.95 Million operations per second** under high contention, demonstrating the **stability and robustness** of the synchronization mechanism. |
+| **Sequential Dependency Handling** | **$\mathbf{\sim 1 \text{ \text{µs}}}$** / Stage | Very low latency for the complete coroutine suspend-schedule-resume cycle, making it **ideal for I/O-intensive Pipelines**. |
 
-* 🚀 **Theoretical Peak (Monotonic Allocator):** Over **14 million** `fork` creation-execution-destruction cycles per second, with core framework overhead **less than 70 nanoseconds** per `fork`. This showcases the raw potential when memory allocation cost is nearly zero.
-* ⚙️ **Practical Throughput (Pool Allocator):** Sustained throughput of nearly **4 million** complete creation-**destruction** cycles per second (including returning memory to the memory pool). This highlights its excellent performance (approx. 250 nanoseconds per round trip) and cache efficiency in scenarios requiring memory reuse.
+For detailed methodology, hardware specifications, and complete data analysis, please refer to **[BENCHMARK.md](https://www.google.com/search?q=./BENCHMARK.zh.md)**.
 
-These results confirm that the overhead introduced by Coflux is negligible, quickly reaching hardware bottlenecks (CPU Cache). It provides a robust, high-performance foundation for demanding concurrent applications.
+## Core Value Proposition of Coflux
 
-For detailed methodology, hardware specifications, and full data analysis, please refer to **[BENCHMARK.md](./BENCHMARK.en.md)**.
+  * **Extreme Micro-Overhead**: Controls the entire asynchronous task life-cycle cost (including coroutine frame, PMR memory, and structured destruction) at the **sub-300 ns level**.
+  * **Efficient and Predictable Concurrency**: The Work-Stealing scheduler enables **safe multi-core scaling** at an extremely low cost, while perfect integration with C++ PMR avoids performance bottlenecks common in traditional concurrency models.
+  * **Structural Concurrency Guarantee**: Combined with high-performance data, Coflux provides a **safe, predictable, and high-throughput** C++20 coroutine runtime environment.
 
 ## Getting Started
 

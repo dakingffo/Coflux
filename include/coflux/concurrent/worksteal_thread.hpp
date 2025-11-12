@@ -6,6 +6,7 @@
 #define COFLUX_WORKSTEAL_THREAD_HPP
 
 #include "../forward_declaration.hpp"
+#include "ring.hpp"
 
 namespace coflux {
 	enum class mode : bool {
@@ -91,12 +92,12 @@ namespace coflux {
 
 				switch (run_mode) {
 				case mode::fixed: {
-					n = task_queue.poll_bulk(buffer_, tail_.load(std::memory_order_relaxed), capacity, running);
+					n = task_queue.wait_dequeue_bulk(Receive(), capacity);
 					tail_.fetch_add(n, std::memory_order_seq_cst);
 					break;
 				}
 				case mode::cached: {
-					if (!(n = task_queue.poll_bulk(buffer_, tail_.load(std::memory_order_relaxed), capacity, running, max_thread_idle_time))) {
+					if (!(n = task_queue.wait_dequeue_bulk_timed(Receive(), capacity, max_thread_idle_time))) {
 						auto now_time = std::chrono::high_resolution_clock().now();
 						auto during = std::chrono::duration_cast<std::chrono::seconds>(now_time - last_time);
 						if (!(thread_size == basic_thread_size || during <= max_thread_idle_time)) {
@@ -125,6 +126,10 @@ namespace coflux {
 		}
 
 	private:
+		ring_iterator<worksteal_thread> Receive() {
+			return { head_, 0, buffer_, capacity };
+		}
+
 		void Finish(std::atomic<std::size_t>& thread_size) {
 			thread_size--;
 			active_ = false;

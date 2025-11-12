@@ -152,10 +152,12 @@ coflux的设计思想是：如果一个task描述了一个并发作用域，它�
 
 #### executor
 
-executor是可扩展的，任何具有以下public成员函数的类都可以成为executor（也就是满足executive概念）。
+executor是可扩展的，任何具有以下public成员函数之一的类都可以成为executor（也就是满足executive概念）。
 ```C++
 template <typename Func, typename...Args>
 auto execute(Func&&, Args&&...);
+// 或者
+auto execute(std::coroutine_handle<>);
 ```
 execute的返回值会被coflux完全忽视。
 
