@@ -71,10 +71,10 @@ namespace coflux {
 	
 	// template <typename TaskQueue = moodycamel::BlockingConcurrentQueue<std::coroutine_handle<>>>
 	// coflux support moodycamel::BlockingConcurrentQueue as template argument of thread_pool, but we don't provide it directly.
-	template <typename TaskQueue = unbounded_queue<>>
+	template <typename TaskQueue = unbounded_queue<>, typename Contants = default_thread_pool_constants>
 	class thread_pool_executor {
 	public:
-		using thread_pool = coflux::thread_pool<TaskQueue>;
+		using thread_pool = coflux::thread_pool<TaskQueue, Contants>;
 		using queue_type  = typename thread_pool::queue_type;
 
 	public:

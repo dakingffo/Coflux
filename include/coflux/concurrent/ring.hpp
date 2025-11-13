@@ -7,7 +7,7 @@
 
 #include "../forward_declaration.hpp"
 namespace coflux {
-	inline std::size_t size_upper(std::size_t n) noexcept {
+	inline constexpr std::size_t size_upper(std::size_t n) noexcept {
 		n--;
 		for (int x = 1; x < (int)(8 * sizeof(std::size_t)); x <<= 1) {
 			n |= n >> x;

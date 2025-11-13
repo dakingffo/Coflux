@@ -81,3 +81,23 @@ BENCHMARK(BM_PmrPool_ForkCreationAndDestruction)
     ->Arg(7000000)   
     ->Arg(10000000)
     ->MinWarmUpTime(3.0);
+
+/*
+-------------------------------------------------------------------------------------------------------------------------------
+Benchmark                                                                     Time             CPU   Iterations UserCounters...
+-------------------------------------------------------------------------------------------------------------------------------
+BM_Pmr_ForkCreation/100000/min_warmup_time:3.000                       13152750 ns     10590278 ns           90 items_per_second=9.44262M/s memory_resource : monotonic
+BM_Pmr_ForkCreation/500000/min_warmup_time:3.000                       66690456 ns     59027778 ns            9 items_per_second=8.47059M/s memory_resource : monotonic
+BM_Pmr_ForkCreation/1000000/min_warmup_time:3.000                     126417773 ns    113636364 ns           11 items_per_second=8.8M/s memory_resource : monotonic
+BM_Pmr_ForkCreation/3000000/min_warmup_time:3.000                     393640450 ns    406250000 ns            2 items_per_second=7.38462M/s memory_resource : monotonic
+BM_Pmr_ForkCreation/5000000/min_warmup_time:3.000                     736627700 ns    718750000 ns            1 items_per_second=6.95652M/s memory_resource : monotonic
+BM_Pmr_ForkCreation/7000000/min_warmup_time:3.000                    1131246400 ns   1125000000 ns            1 items_per_second=6.22222M/s memory_resource : monotonic
+BM_Pmr_ForkCreation/10000000/min_warmup_time:3.000                   1810374500 ns   1750000000 ns            1 items_per_second=5.71429M/s memory_resource : monotonic
+BM_PmrPool_ForkCreationAndDestruction/100000/min_warmup_time:3.000     16208986 ns     16250000 ns           50 items_per_second=6.15385M/s memory_resource : monotonic + unsynchronized_pool
+BM_PmrPool_ForkCreationAndDestruction/500000/min_warmup_time:3.000     80468000 ns     75892857 ns            7 items_per_second=6.58824M/s memory_resource : monotonic + unsynchronized_pool
+BM_PmrPool_ForkCreationAndDestruction/1000000/min_warmup_time:3.000   164727350 ns    164062500 ns            4 items_per_second=6.09524M/s memory_resource : monotonic + unsynchronized_pool
+BM_PmrPool_ForkCreationAndDestruction/3000000/min_warmup_time:3.000   737537400 ns    687500000 ns            1 items_per_second=4.36364M/s memory_resource : monotonic + unsynchronized_pool
+BM_PmrPool_ForkCreationAndDestruction/5000000/min_warmup_time:3.000  1273152200 ns   1265625000 ns            1 items_per_second=3.95062M/s memory_resource : monotonic + unsynchronized_pool
+BM_PmrPool_ForkCreationAndDestruction/7000000/min_warmup_time:3.000  1928340300 ns   1906250000 ns            1 items_per_second=3.67213M/s memory_resource : monotonic + unsynchronized_pool
+BM_PmrPool_ForkCreationAndDestruction/10000000/min_warmup_time:3.000 2885152300 ns   2781250000 ns            1 items_per_second=3.59551M/s memory_resource : monotonic + unsynchronized_pool
+*/

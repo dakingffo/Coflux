@@ -9,9 +9,50 @@
 #include "ring.hpp"
 
 namespace coflux {
-	template <typename Container = unsync_ring<std::coroutine_handle<>>>
+	struct default_unbounded_queue_constants {
+		static constexpr std::size_t ENQUEUE_SPIN_TIMES = 32;
+		// for (int i = 0; i < ENQUEUE_SPIN_TIMES; i++)
+		//     if (mtx_.try_lock()) {
+		//	       ...
+		//	   }
+
+		static constexpr std::size_t ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD = 2;
+		//     if (i & (ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD - 1)) {
+		//	       std::this_thread::yield();
+		//     }
+
+		static constexpr std::size_t DEQUEUE_SPIN_TIMES = 4;
+		// for (int i = 0; i < DEQUEUE_SPIN_TIMES; i++)
+		//     if (mtx_.try_lock()) {
+		//	       ...
+		//	   }
+		static constexpr std::size_t DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD = 2;
+		//     if (i & (DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD - 1)) {
+		//	       std::this_thread::yield();
+		//     }
+	};
+
+	template <typename Constants>
+	struct unbounded_queue_constant_traits {
+		static constexpr std::size_t ENQUEUE_SPIN_TIMES = requires{ Constants::ENQUEUE_SPIN_TIMES; } ?
+			size_upper(Constants::ENQUEUE_SPIN_TIMES) : default_unbounded_queue_constants::ENQUEUE_SPIN_TIMES;
+
+		static constexpr std::size_t ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD = requires{ Constants::ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD; } ?
+			size_upper(Constants::ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD) : default_unbounded_queue_constants::ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD;
+
+		static constexpr std::size_t DEQUEUE_SPIN_TIMES = requires{ Constants::DEQUEUE_SPIN_TIMES; } ?
+			size_upper(Constants::DEQUEUE_SPIN_TIMES) : default_unbounded_queue_constants::DEQUEUE_SPIN_TIMES;
+
+		static constexpr std::size_t DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD = requires{ Constants::DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD; } ?
+			size_upper(Constants::DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD) : default_unbounded_queue_constants::DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD;
+	};
+
+	template <typename Container = unsync_ring<std::coroutine_handle<>>, 
+		typename Constants = default_unbounded_queue_constants>
 	class unbounded_queue {
 	public:
+		using constant_traits = unbounded_queue_constant_traits<Constants>;
+
 		using container_type  = Container;
 		using value_type      = typename container_type::value_type;
 		static_assert(std::same_as<value_type, std::coroutine_handle<>>, "unbounded_queue only supports std::std::coroutine_handle<>");
@@ -19,7 +60,7 @@ namespace coflux {
 		using reference       = typename container_type::reference;
 		using const_reference = typename container_type::const_reference;
 
-		using allocator_type = std::conditional_t<has_allocator<container_type>,
+		using allocator_type   = std::conditional_t<has_allocator<container_type>,
 			typename container_type::allocator_type, std::allocator<value_type>>;
 
 	public:
@@ -73,7 +114,7 @@ namespace coflux {
 
 		template <typename Ref>
 		void enqueue(Ref&& value) {
-			for (int i = 0; i < 32; i++) {
+			for (int i = 0; i < constant_traits::ENQUEUE_SPIN_TIMES; i++) {
 				if (mtx_.try_lock()) {
 					cont_.push_back(std::forward<Ref>(value));
 					size_.fetch_add(1, std::memory_order_release);
@@ -81,11 +122,10 @@ namespace coflux {
 					not_empty_cv_.notify_one();
 					return;
 				}
-				if (i & 1) {
+				if (i & (constant_traits::ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD - 1)) {
 					std::this_thread::yield();
 				}
 			}
-
 
 			std::lock_guard<std::mutex> lock(mtx_);
 			cont_.push_back(std::forward<Ref>(value));
@@ -93,12 +133,26 @@ namespace coflux {
 			not_empty_cv_.notify_one();
 		}
 
-		value_type dequeue(const std::atomic_bool& continuation = true) {
-			std::unique_lock<std::mutex> lock(mtx_);
-			not_empty_cv_.wait(lock, [this, &continuation]() {
-				return size_.load(std::memory_order_relaxed) > 0 || !continuation.load(std::memory_order_relaxed);
-				});
-			if (!continuation || size_.load(std::memory_order_relaxed) == 0) {
+		value_type wait_dequeue() {
+			for (int i = 0; i < constant_traits::DEQUEUE_SPIN_TIMES; i++) {
+				if (mtx_.try_lock()) {
+					if (size_.load(std::memory_order_relaxed) == 0) {
+						mtx_.unlock();
+						break;
+					}
+					value_type element = cont_.front();
+					cont_.pop_front();
+					size_.fetch_sub(1, std::memory_order_release);
+					mtx_.unlock();
+					return element;
+				}
+				if (i & (constant_traits::DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD - 1)) {
+					std::this_thread::yield();
+				}
+			}
+
+			std::lock_guard<std::mutex> lock(mtx_);
+			if (size_.load(std::memory_order_relaxed) == 0) {
 				return value_type(nullptr);
 			}
 			value_type element = cont_.front();
@@ -110,12 +164,12 @@ namespace coflux {
 		}
 
 		template <typename Rep, typename Period>
-		value_type dequeue_timed(const std::atomic_bool& continuation, const std::chrono::duration<Rep, Period>& wait_time) {
+		value_type wait_dequeue_timed(const std::chrono::duration<Rep, Period>& wait_time) {
 			std::unique_lock<std::mutex> lock(mtx_);
-			bool wait_result = not_empty_cv_.wait_for(lock, wait_time, [this, &continuation]() {
-				return size_.load(std::memory_order_relaxed) > 0 || !continuation.load(std::memory_order_relaxed);
+			bool wait_result = not_empty_cv_.wait_for(lock, wait_time, [this]() {
+				return size_.load(std::memory_order_relaxed) > 0;
 				});
-			if (!continuation || size_.load(std::memory_order_relaxed) == 0 || !wait_result) {
+			if (size_.load(std::memory_order_relaxed) == 0 || !wait_result) {
 				return value_type(nullptr);
 			}
 			value_type element = cont_.front();
@@ -127,14 +181,28 @@ namespace coflux {
 		}
 
 		template <typename ForwardIt>
-		size_type wait_dequeue_bulk(
-			ForwardIt				buffer,
-			std::size_t			    capacity
-		) {
-			std::unique_lock<std::mutex> lock(mtx_);
-			not_empty_cv_.wait(lock, [this]() {
-				return size_.load(std::memory_order_relaxed) > 0;
-				});
+		size_type wait_dequeue_bulk(ForwardIt buffer, std::size_t capacity) {
+			for (int i = 0; i < constant_traits::DEQUEUE_SPIN_TIMES; i++) {
+				if (mtx_.try_lock()) {
+					if (size_.load(std::memory_order_relaxed) == 0) {
+						mtx_.unlock();
+						return 0;
+					}
+					std::size_t counter = 0;
+					for (; counter < std::min(capacity, size_.load(std::memory_order_relaxed)); counter++) {
+						*buffer++ = cont_.front();
+						cont_.pop_front();
+					}
+					size_.fetch_sub(counter, std::memory_order_release);
+					mtx_.unlock();
+					return counter;
+				}
+				if (i & (constant_traits::DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD - 1)) {
+					std::this_thread::yield();
+				}
+			}
+
+			std::lock_guard<std::mutex> lock(mtx_);
 			if (size_.load(std::memory_order_relaxed) == 0) {
 				return 0;
 			}
@@ -150,9 +218,7 @@ namespace coflux {
 		}
 
 		template <typename ForwardIt, typename Rep, typename Period>
-		size_type wait_dequeue_bulk_timed(
-			ForwardIt                                 buffer,
-			std::size_t							      capacity,
+		size_type wait_dequeue_bulk_timed(ForwardIt buffer, std::size_t capacity,
 			const std::chrono::duration<Rep, Period>& wait_time
 		) {
 			std::unique_lock<std::mutex> lock(mtx_);

@@ -13,17 +13,19 @@ namespace coflux {
 		fixed, cached
 	};
 
-	template <std::size_t N>
+	template <std::size_t N, std::size_t Align, size_t Idle>
 	class worksteal_thread {
 	public:
 		static_assert(!(N & (N - 1)), "N should be power of 2.");
+
 		using value_type  = std::coroutine_handle<>;
 		using pointer     = value_type*;
 		using buffer_type = value_type[N];
 
-		static constexpr std::size_t capacity					   = N;
-		static constexpr std::size_t mask                          = capacity - 1;
-		static constexpr std::chrono::seconds max_thread_idle_time = std::chrono::seconds(60);
+		static constexpr std::size_t		  capacity		       = N;
+		static constexpr std::size_t		  mask                 = capacity - 1;
+		static constexpr std::size_t		  align			       = Align;
+		static constexpr std::chrono::seconds max_thread_idle_time = std::chrono::seconds(Idle);
 
 	public:
 		worksteal_thread() = default;
@@ -189,12 +191,12 @@ namespace coflux {
 			}
 		}
 
-		std::atomic_bool			   active_ = false;
-		std::thread                    thread_;
+		std::atomic_bool active_ = false;
+		std::thread      thread_;
 
-		alignas(64) std::atomic_size_t head_ = 0;
-		alignas(64) buffer_type		   buffer_;
-		alignas(64) std::atomic_size_t tail_ = 0;
+		alignas(align) std::atomic_size_t  head_ = 0;
+		alignas(align) buffer_type		   buffer_;
+		alignas(align) std::atomic_size_t  tail_ = 0;
 	};
 }
 

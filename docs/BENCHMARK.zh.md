@@ -38,7 +38,8 @@
 
 | 基准测试场景 | 执行器类型 | 关键参数 | 峰值吞吐量 | 约峰值延迟 | 关键开销 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **核心开销 (Pool)** | `noop_executor` | $10^5 \text{ Forks}$ | $\mathbf{\sim 390 \text{ 万/秒}}$ | $\mathbf{\sim 256 \text{ 纳秒/Fork}}$ | 框架核心开销 + PMR 内存重用。 |
+| **核心开销 (Monotonic)** | `noop_executor` | $10^5 \text{ Forks}$ | $\mathbf{\sim 944 \text{ 万/秒}}$ | $\mathbf{\sim 106 \text{ 纳秒/Fork}}$ | 框架核心开销 |
+| **核心开销 (Pool)** | `noop_executor` | $10^5 \text{ Forks}$ | $\mathbf{\sim 659 \text{ 万/秒}}$ | $\mathbf{\sim 152 \text{ 纳秒/Fork}}$ | 框架核心开销 + PMR 内存重用。 |
 | **M:N 并发调度** | `thread_pool_executor` | $10^6 \text{ Forks}$ | $\mathbf{\sim 195 \text{ 万/秒}}$ | $\mathbf{\sim 513 \text{ 纳秒/Fork}}$ | 核心开销 + **Work-Stealing 调度与同步**。 |
 | **Pipeline 吞吐量** | `thread_pool_executor` | $C=8, D=5$ | $\mathbf{\sim 214 \text{ 千/秒}}$ | $\mathbf{\sim 4.67 \text{ 微秒/Pipeline}}$ | 序列依赖，高频挂起/恢复。 |
 
@@ -50,18 +51,18 @@
 
 ### 1. 核心开销与最小延迟
 
-`BM_PmrPool_ForkCreationAndDestruction` 的结果 ($\mathbf{\sim 256 \text{ ns/Fork}}$) 代表了 Coflux 框架在启用内存重用时，一个协程生命周期（创建、执行、PMR 分配、销毁）的**最小往返开销**。
+`BM_PmrPool_ForkCreationAndDestruction` 的结果 ($\mathbf{\sim 152 \text{ ns/Fork}}$) 代表了 Coflux 框架在启用内存重用时，一个协程生命周期（创建、执行、PMR 分配、销毁）的**最小往返开销**。
 
-* **价值**: 在现代 CPU 上，将协程任务管理开销控制在 $\mathbf{300 \text{ 纳秒}}$ 以内，证明了 Coflux 核心抽象的**高效性**和**轻量级**。
+* **价值**: 在现代 CPU 上，将协程任务管理开销控制在 $\mathbf{200 \text{ 纳秒}}$ 以内，证明了 Coflux 核心抽象的**高效性**和**轻量级**。
 
 ### 2. M:N 并发调度效率：多核扩展性能
 
 通过对比单线程核心开销与多线程并发调度的总开销，可以精确量化 Work-Stealing 机制的效率：
 
-$$\text{多线程净增调度成本} \approx \mathbf{513 \text{ ns}} \text{ (M:N)} - \mathbf{256 \text{ ns}} \text{ (单线程)} = \mathbf{257 \text{ 纳秒}}$$
+$$\text{多线程净增调度成本} \approx \mathbf{513 \text{ ns}} \text{ (M:N)} - \mathbf{152 \text{ ns}} \text{ (单线程)} = \mathbf{361 \text{ 纳秒}}$$
 
-* **调度成本**: Coflux 的 Work-Stealing 调度器仅引入了约 $\mathbf{257 \text{ 纳秒}}$ 的额外成本，就将任务从单线程安全地扩展到了多核并行环境。
-* **同步效率**: 这 $\mathbf{257 \text{ 纳秒}}$ 包含了所有线程间的同步竞争和负载均衡开销。它表明 Coflux 的调度器设计在**高竞争负载**下，能以**非常高效**的方式进行线程协同和任务分配。
+* **调度成本**: Coflux 的 Work-Stealing 调度器仅引入了约 $\mathbf{361 \text{ 纳秒}}$ 的额外成本，就将任务从单线程安全地扩展到了多核并行环境。
+* **同步效率**: 这 $\mathbf{361 \text{ 纳秒}}$ 包含了所有线程间的同步竞争和负载均衡开销。它表明 Coflux 的调度器设计在**高竞争负载**下，能以**非常高效**的方式进行线程协同和任务分配。
 
 ### 3. 序列依赖处理能力：Pipeline 效率
 

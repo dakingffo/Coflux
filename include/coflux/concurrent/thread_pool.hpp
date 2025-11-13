@@ -14,10 +14,33 @@
 #include "worksteal_thread.hpp"
 
 namespace coflux {
-	template <typename TaskQueue>
+	struct default_thread_pool_constants {
+		static constexpr std::size_t WORKSTEAL_LOCAL_QUEUE_CAPACITY = 32;
+
+		static constexpr std::size_t ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL = 64;
+
+		static constexpr std::size_t CACHED_MAX_IDLE_TIME_SECONDS   = 60;
+	};
+
+	template <typename Constants>
+	struct thread_pool_constant_traits {
+		static constexpr std::size_t WORKSTEAL_LOCAL_QUEUE_CAPACITY = requires{ Constants::WORKSTEAL_LOCAL_QUEUE_CAPACITY; } ?
+			size_upper(Constants::WORKSTEAL_LOCAL_QUEUE_CAPACITY) : default_thread_pool_constants::WORKSTEAL_LOCAL_QUEUE_CAPACITY;
+
+		static constexpr std::size_t ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL = requires{ Constants::ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL; } ?
+			size_upper(Constants::ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL) : default_thread_pool_constants::ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL;
+
+		static constexpr std::size_t CACHED_MAX_IDLE_TIME_SECONDS   = requires{ Constants::CACHED_MAX_IDLE_TIME_SECONDS; } ?
+			Constants::CACHED_MAX_IDLE_TIME_SECONDS : default_thread_pool_constants::CACHED_MAX_IDLE_TIME_SECONDS;
+	};
+
+	template <typename TaskQueue, typename Constants>
 	class thread_pool {
 	public:
-		using thread_type    = worksteal_thread<32>;
+		using constant_traits = thread_pool_constant_traits<Constants>;
+
+		using thread_type    = worksteal_thread<constant_traits::WORKSTEAL_LOCAL_QUEUE_CAPACITY, 
+			constant_traits::ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL, constant_traits::CACHED_MAX_IDLE_TIME_SECONDS>;
 		using queue_type     = TaskQueue;
 		using value_type     = std::coroutine_handle<>;
 

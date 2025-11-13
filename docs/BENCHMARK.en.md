@@ -38,7 +38,8 @@ The table below summarizes the key performance metrics across the different scen
 
 | Benchmark Scenario | Executor Type | Key Parameter | Peak Throughput | Approx. Peak Latency | Primary Overhead Measured |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Core Overhead (Pool)** | `noop_executor` | $10^5 \text{ Forks}$ | $\mathbf{\sim 3.90 \text{ M/s}}$ | $\mathbf{\sim 256 \text{ ns/Fork}}$ | Raw framework overhead + PMR memory reuse. |
+| **Core Overhead (Monotonicl)** | `noop_executor` | $10^5 \text{ Forks}$ | $\mathbf{\sim 9.44 \text{ M/s}}$ | $\mathbf{\sim 106 \text{ ns/Fork}}$ | Raw framework overhead. |
+| **Core Overhead (Pool)** | `noop_executor` | $10^5 \text{ Forks}$ | $\mathbf{\sim 6.59 \text{ M/s}}$ | $\mathbf{\sim 152 \text{ ns/Fork}}$ | Raw framework overhead + PMR memory reuse. |
 | **M:N Concurrency** | `thread_pool_executor` | $10^6 \text{ Forks}$ | $\mathbf{\sim 1.95 \text{ M/s}}$ | $\mathbf{\sim 513 \text{ ns/Fork}}$ | Core Overhead + **Work-Stealing Scheduling & Sync**. |
 | **Pipeline Throughput** | `thread_pool_executor` | $C=8, D=5$ | $\mathbf{\sim 214 \text{ K/s}}$ | $\mathbf{\sim 4.67 \text{ µs/Pipeline}}$ | Sequential dependency, high-frequency suspension/resumption. |
 
@@ -50,17 +51,17 @@ The table below summarizes the key performance metrics across the different scen
 
 ### 1. Minimal Core Overhead and Framework Cost
 
-The result of the core overhead test (`BM_PmrPool_ForkCreationAndDestruction`) at $\mathbf{\sim 256 \text{ ns/Fork}}$ represents the **minimum round-trip cost** of a coroutine life-cycle (allocation, construction, execution, and PMR deallocation) within the Coflux framework.
+The result of the core overhead test (`BM_PmrPool_ForkCreationAndDestruction`) at $\mathbf{\sim 156 \text{ ns/Fork}}$ represents the **minimum round-trip cost** of a coroutine life-cycle (allocation, construction, execution, and PMR deallocation) within the Coflux framework.
 
-* **Significance**: Achieving a full coroutine life-cycle cost under $\mathbf{300 \text{ ns}}$ demonstrates the **high efficiency** and **lightweight nature** of the Coflux core abstractions, setting a very high bar for minimal overhead.
+* **Significance**: Achieving a full coroutine life-cycle cost under $\mathbf{200 \text{ ns}}$ demonstrates the **high efficiency** and **lightweight nature** of the Coflux core abstractions, setting a very high bar for minimal overhead.
 
 ### 2. M:N Concurrency Scaling Efficiency
 
 By comparing the single-thread core overhead with the multi-thread scheduling cost, the net overhead introduced by the Work-Stealing scheduler can be precisely quantified:
 
-$$\text{Net Multi-Thread Scheduling Cost} \approx \mathbf{513 \text{ ns}} \text{ (M:N)} - \mathbf{256 \text{ ns}} \text{ (Single-Thread)} = \mathbf{257 \text{ ns}}$$
+$$\text{Net Multi-Thread Scheduling Cost} \approx \mathbf{513 \text{ ns}} \text{ (M:N)} - \mathbf{152 \text{ ns}} \text{ (Single-Thread)} = \mathbf{361 \text{ ns}}$$
 
-* **Low Overhead Scaling**: The Work-Stealing scheduler introduces only $\mathbf{\sim 257 \text{ ns}}$ of net overhead to safely scale the coroutine workload across multiple cores.
+* **Low Overhead Scaling**: The Work-Stealing scheduler introduces only $\mathbf{\sim 361 \text{ ns}}$ of net overhead to safely scale the coroutine workload across multiple cores.
 * **Synchronization Robustness**: This minimal cost accounts for all inter-thread synchronization, atomic contention, and load balancing efforts. It confirms that Coflux's Work-Stealing design facilitates **highly efficient scaling** and **robust synchronization** under high contention.
 
 ### 3. Sequential Dependency and Context Switching
@@ -74,8 +75,8 @@ The Pipeline test is critical for I/O-bound applications, as it measures the lat
 
 The benchmark data confirms Coflux's strong commitment to performance and reliability across three critical dimensions:
 
-1.  **Low Fundamental Overhead** ($\mathbf{\sim 256 \text{ ns}}$), ensuring lightweight tasks.
-2.  **High-Efficiency Multi-Core Scheduling** ($\mathbf{1.95 \text{ M/s}}$), guaranteeing robust and scalable concurrency.
-3.  **Fast Sequential Dependency Handling** ($\mathbf{\sim 1 \text{ \text{µs}}/ \text{stage}}$), maintaining low latency for I/O-bound pipelines.
+1.  **Low Fundamental Overhead**, ensuring lightweight tasks.
+2.  **High-Efficiency Multi-Core Scheduling**, guaranteeing robust and scalable concurrency.
+3.  **Fast Sequential Dependency Handling**, maintaining low latency for I/O-bound pipelines.
 
 These performance results, combined with the **absolute safety and robustness** provided by Coflux's **Structural Concurrency (`task/fork`)** model, position the framework as a highly capable platform for building modern, high-performance, and reliable C++20 concurrent systems.

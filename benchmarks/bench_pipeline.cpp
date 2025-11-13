@@ -100,3 +100,15 @@ BENCHMARK(BM_PipelineThroughput)
     ->Args({ 8, 20 })      // Core count concurrency, deep depth
     ->UseRealTime()        // Use wall time as thread pool involves blocking/waiting
     ->MinWarmUpTime(3.0);  // Longer warmup for thread pool
+
+/*
+----------------------------------------------------------------------------------------------------------------------
+Benchmark                                                            Time             CPU   Iterations UserCounters...
+----------------------------------------------------------------------------------------------------------------------
+BM_PipelineThroughput/1/5/min_warmup_time:3.000/real_time     18339685 ns    135890152 ns           33 items_per_second=54.5266k/s Concurrency=1 Depth=5
+BM_PipelineThroughput/4/10/min_warmup_time:3.000/real_time    55501370 ns    348437500 ns           10 items_per_second=72.0703k/s Concurrency=4 Depth=10
+BM_PipelineThroughput/8/10/min_warmup_time:3.000/real_time    80874712 ns    560546875 ns            8 items_per_second=98.9184k/s Concurrency=8 Depth=10
+BM_PipelineThroughput/16/10/min_warmup_time:3.000/real_time  131499740 ns    859375000 ns            5 items_per_second=121.673k/s Concurrency=16 Depth=10
+BM_PipelineThroughput/8/5/min_warmup_time:3.000/real_time     36009645 ns   1157812500 ns           20 items_per_second=222.163k/s Concurrency=8 Depth=5
+BM_PipelineThroughput/8/20/min_warmup_time:3.000/real_time   155996220 ns   1390625000 ns            5 items_per_second=51.2833k/s Concurrency=8 Depth=20
+*/

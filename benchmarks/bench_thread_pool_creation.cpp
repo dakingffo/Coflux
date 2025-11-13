@@ -61,3 +61,16 @@ BENCHMARK(BM_MtoNThreadPool_ForkCreationAndDestruction)
     ->Arg(10000000)
     ->UseRealTime()
     ->MinWarmUpTime(3.0);
+
+/*
+------------------------------------------------------------------------------------------------------------------------------------------------
+Benchmark                                                                                      Time             CPU   Iterations UserCounters...
+------------------------------------------------------------------------------------------------------------------------------------------------
+BM_MtoNThreadPool_ForkCreationAndDestruction/100000/min_warmup_time:3.000/real_time     72402237 ns     13671875 ns            8 items_per_second=1.38117M/s memory_resource : monotonic + synchronized_pool
+BM_MtoNThreadPool_ForkCreationAndDestruction/500000/min_warmup_time:3.000/real_time    255250533 ns     62500000 ns            3 items_per_second=1.95886M/s memory_resource : monotonic + synchronized_pool
+BM_MtoNThreadPool_ForkCreationAndDestruction/1000000/min_warmup_time:3.000/real_time   596412200 ns     62500000 ns            1 items_per_second=1.67669M/s memory_resource : monotonic + synchronized_pool
+BM_MtoNThreadPool_ForkCreationAndDestruction/3000000/min_warmup_time:3.000/real_time  2646320900 ns    390625000 ns            1 items_per_second=1.13365M/s memory_resource : monotonic + synchronized_pool
+BM_MtoNThreadPool_ForkCreationAndDestruction/5000000/min_warmup_time:3.000/real_time  4464877000 ns    796875000 ns            1 items_per_second=1.11985M/s memory_resource : monotonic + synchronized_pool
+BM_MtoNThreadPool_ForkCreationAndDestruction/7000000/min_warmup_time:3.000/real_time  4792673100 ns   1046875000 ns            1 items_per_second=1.46056M/s memory_resource : monotonic + synchronized_pool
+BM_MtoNThreadPool_ForkCreationAndDestruction/10000000/min_warmup_time:3.000/real_time 8012844700 ns   1687500000 ns            1 items_per_second=1.248M/s memory_resource : monotonic + synchronized_pool
+*/
