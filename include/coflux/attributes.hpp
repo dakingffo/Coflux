@@ -3,7 +3,11 @@
 
 // check attribute
 #if defined(__has_attribute)
-#   define COFLUX_HAS_ATTRIBUTE(x) __has_cpp_attribute(x) || __has_attribute(x)
+#   if defined(__has_feature)
+#       define COFLUX_HAS_ATTRIBUTE(x) __has_cpp_attribute(x) || __has_attribute(x) || __has_feature(x)
+#   else
+#       define COFLUX_HAS_ATTRIBUTE(x) __has_cpp_attribute(x) || __has_attribute(x)
+#   endif
 #else
 #   define COFLUX_HAS_ATTRIBUTE(x) __has_cpp_attribute(x)
 #endif
@@ -67,6 +71,12 @@
 #   define COFLUX_ALWAYS_INLINE [[msvc::forceinline]] // MSVC
 #else
 #   define COFLUX_ALWAYS_INLINE
+#endif
+
+#if COFLUX_HAS_ATTRIBUTE(thread_sanitizer)
+#   define COFLUX_NO_TSAN __attribute__((no_sanitize("thread")))
+#else
+#   define COFLUX_NO_TSAN
 #endif
 
 // attribute list

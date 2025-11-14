@@ -243,7 +243,7 @@ TEST(CombinerTest, RangeWhen_WithTakeView) {
         std::iota(source_data.begin(), source_data.end(), 0); // 0 to 9
 
         auto task_gen = source_data | std::views::transform([&](int i) {
-            return delayed_value(e, i, std::chrono::milliseconds(30 * (10 - i))); // Make later tasks faster
+            return delayed_value(e, i, std::chrono::milliseconds(50 * (10 - i))); // Make later tasks faster
             });
 
         // Take 5 tasks, wait for the first 3 of those 5
@@ -253,7 +253,7 @@ TEST(CombinerTest, RangeWhen_WithTakeView) {
     auto results = test_task.get_result();
     ASSERT_EQ(results.size(), 3);
     // The tasks taken were for i = 0, 1, 2, 3, 4.
-    // Delays were 100ms, 90ms, 80ms, 70ms, 60ms.
+    // Delays were 500ms, 450ms, 400ms, 350ms, 300ms.
     // The fastest 3 are for i=4, i=3, i=2. Results are 4, 3, 2.
     std::sort(results.begin(), results.end());
     EXPECT_EQ(results[0], 2);

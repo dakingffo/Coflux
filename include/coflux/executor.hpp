@@ -85,8 +85,7 @@ namespace coflux {
 			std::size_t thread_size_threshold = std::thread::hardware_concurrency() * 2,
 			Args&&...   args)
 			: pool_(std::make_shared<thread_pool>(
-				basic_thread_size, run_mode, thread_size_threshold, std::forward<Args>(args)...)) {
-		}
+				basic_thread_size, run_mode, thread_size_threshold, std::forward<Args>(args)...)) {}
 		~thread_pool_executor() = default;
 
 		thread_pool_executor(const thread_pool_executor&)			 = default;

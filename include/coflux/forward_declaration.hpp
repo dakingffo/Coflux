@@ -280,21 +280,41 @@ namespace coflux {
 	concept task_like = fork_lrvalue<TaskLike> || task_rvalue<TaskLike>;
 
 
-	template <typename ForkRange>
-	concept fork_range = requires(ForkRange r) {
-		std::ranges::forward_range<ForkRange> &&
-		std::is_reference_v<ForkRange> && 
-		is_fork_lrvalue_v<std::remove_cvref_t<decltype(*r.begin())>>;
+	template <typename TaskRange>
+	concept task_range = requires(TaskRange range) {
+		requires std::ranges::forward_range<TaskRange>;
+		requires task_like<std::remove_cvref_t<decltype(*range.begin())>>;
 	};
 
+	template <typename TaskRange>
+	struct is_task_lvalue_range {
+		static constexpr bool value = false;
+	};
+
+	template <task_range TaskRange>
+	struct is_task_lvalue_range<TaskRange&> {
+		static constexpr bool value = true;
+	};
+
+	template <std::ranges::range TaskRange>
+	struct is_task_lvalue_range<std::ranges::ref_view<TaskRange>> {
+		static constexpr bool value = true;
+	};
+
+	template <task_range TaskRange>
+	inline constexpr bool is_task_lvalue_range_v = is_task_lvalue_range<TaskRange>::value;
+
+	template <typename TaskRange>
+	concept task_lvalue_range = is_task_lvalue_range_v<TaskRange>;
+
 	namespace detail {
-		template <fork_lrvalue... Forks>
-		using when_any_pair = std::pair<when_any_tag, std::tuple<Forks...>>;
+		template <task_like... TaskLikes>
+		using when_any_pair = std::pair<when_any_tag, std::tuple<TaskLikes...>>;
 
 		template <task_like... TaskLikes>
 		using when_all_pair = std::pair<when_all_tag, std::tuple<TaskLikes...>>;
 
-		template <typename Range>
+		template <task_range Range>
 		using when_n_pair = std::pair<when_n_tag, Range>;
 	}
 

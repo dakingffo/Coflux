@@ -614,9 +614,9 @@ namespace coflux {
 			return awaiter<Fork, executor_type>(std::forward<Fork>(co_fork), executor_, &(this->get_status()));
 		}
 
-		template <fork_lrvalue ...Forks>
-		auto await_transform(detail::when_any_pair<Forks...>&& when_any) noexcept {
-			return awaiter<detail::when_any_pair<Forks...>, executor_type>(
+		template <task_like ...TaskLikes>
+		auto await_transform(detail::when_any_pair<TaskLikes...>&& when_any) noexcept {
+			return awaiter<detail::when_any_pair<TaskLikes...>, executor_type>(
 				std::move(when_any.second), executor_, &(this->get_status()));
 		}
 
@@ -626,7 +626,7 @@ namespace coflux {
 				std::move(when_all.second), executor_, &(this->get_status()));
 		}
 
-		template <fork_range Range>
+		template <task_range Range>
 		auto await_transform(detail::when_n_pair<Range>&& when_n) noexcept {
 			return awaiter<detail::when_n_pair<Range>, executor_type>(when_n.first.n_,
 				std::forward<Range>(when_n.second), executor_, &(this->get_status()));

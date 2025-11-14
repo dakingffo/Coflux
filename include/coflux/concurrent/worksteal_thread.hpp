@@ -52,10 +52,10 @@ namespace coflux {
 
 		template <typename TaskQueue>
 		void enable(
-			TaskQueue& task_queue,
+			TaskQueue& 										task_queue,
 			mode											run_mode,
-			std::atomic_bool& running,
-			std::atomic<std::size_t>& thread_size,
+			std::atomic_bool& 								running,
+			std::atomic<std::size_t>& 						thread_size,
 			std::size_t										basic_thread_size,
 			std::vector<std::unique_ptr<worksteal_thread>>& threads
 		) {
@@ -129,7 +129,7 @@ namespace coflux {
 
 	private:
 		ring_iterator<worksteal_thread> Receive() {
-			return { head_, 0, buffer_, capacity };
+			return { head_.load(std::memory_order_relaxed), 0, buffer_, capacity };
 		}
 
 		void Finish(std::atomic<std::size_t>& thread_size) {
@@ -139,20 +139,21 @@ namespace coflux {
 		
 		void Handle_local() noexcept {
 			while (true) {
-				std::size_t t = tail_.fetch_sub(1, std::memory_order_acq_rel) - 1;
-				std::size_t h = head_.load(std::memory_order_seq_cst);
+				std::size_t t = tail_.fetch_sub(1, std::memory_order_relaxed) - 1;
+				std::atomic_thread_fence(std::memory_order_seq_cst);
+				std::size_t h = head_.load(std::memory_order_relaxed);
 				if (h <= t) {
 					if (h == t) {
 						if (!head_.compare_exchange_strong(h, h + 1, std::memory_order_seq_cst, std::memory_order_relaxed)) {
 							tail_.store(t + 1, std::memory_order_release);
 							return;
 						}
-						tail_.store(t + 1, std::memory_order_release);
+						tail_.store(t + 1, std::memory_order_relaxed);
 					}
 					buffer_[t & mask].resume();
 				}
 				else {
-					tail_.store(t + 1, std::memory_order_release);
+					tail_.store(t + 1, std::memory_order_relaxed);
 					return;
 				}
 			}
@@ -163,7 +164,7 @@ namespace coflux {
 			std::size_t begin_pos = (std::size_t)mt() & (threads_size - 1);
 			for (int i = 0; i < (threads_size >> 1); i++) {
 				size_t idx = (i + begin_pos) & (threads_size - 1);
-				if (threads[idx].get() == this || (run_mode == mode::cached ? !threads[idx]->active_.load(std::memory_order_relaxed) : true)) {
+				if (threads[idx].get() == this || (run_mode == mode::cached ? !threads[idx]->active_.load(std::memory_order_relaxed) : false)) {
 					continue;
 				}
 				value_type handle = Steal(*threads[idx]);
@@ -173,17 +174,20 @@ namespace coflux {
 			}
 		}
 
-		value_type Steal(worksteal_thread& victim) noexcept {
-			std::size_t h = victim.head_.load(std::memory_order_seq_cst);
+		COFLUX_ATTRIBUTES(COFLUX_NO_TSAN) value_type Steal(worksteal_thread& victim) noexcept {
+			std::size_t h = victim.head_.load(std::memory_order_acquire);
+			std::atomic_thread_fence(std::memory_order_seq_cst);
 			std::size_t t = victim.tail_.load(std::memory_order_acquire);
-
 			if (h < t) {
+				value_type res = victim.buffer_[h & mask]; // This will be midundersrtood by TSAN
 				if (!victim.head_.compare_exchange_strong(h, h + 1,
 					std::memory_order_seq_cst, std::memory_order_relaxed)) {
 					return nullptr;
 				}
 				else {
-					return victim.buffer_[h & mask];
+					// We read it first, then decide return handle or not, 
+					// so that we avoid the race data between Steal and wait_dequeue_bulk
+					return res;
 				}
 			}
 			else {
@@ -191,8 +195,8 @@ namespace coflux {
 			}
 		}
 
-		std::atomic_bool active_ = false;
-		std::thread      thread_;
+		std::atomic_bool      active_ = false;
+		std::thread           thread_;
 
 		alignas(align) std::atomic_size_t  head_ = 0;
 		alignas(align) buffer_type		   buffer_;

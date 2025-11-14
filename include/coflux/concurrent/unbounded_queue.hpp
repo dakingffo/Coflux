@@ -21,7 +21,7 @@ namespace coflux {
 		//	       std::this_thread::yield();
 		//     }
 
-		static constexpr std::size_t DEQUEUE_SPIN_TIMES = 4;
+		static constexpr std::size_t DEQUEUE_SPIN_TIMES = 8;
 		// for (int i = 0; i < DEQUEUE_SPIN_TIMES; i++)
 		//     if (mtx_.try_lock()) {
 		//	       ...
@@ -151,10 +151,10 @@ namespace coflux {
 				}
 			}
 
-			std::lock_guard<std::mutex> lock(mtx_);
-			if (size_.load(std::memory_order_relaxed) == 0) {
-				return value_type(nullptr);
-			}
+			std::unique_lock<std::mutex> lock(mtx_);
+			not_empty_cv_.wait(lock, [this]() {
+				return size_.load(std::memory_order_relaxed) > 0;
+				});
 			value_type element = cont_.front();
 			cont_.pop_front();
 			if (size_.fetch_sub(1, std::memory_order_release)) {
@@ -186,7 +186,7 @@ namespace coflux {
 				if (mtx_.try_lock()) {
 					if (size_.load(std::memory_order_relaxed) == 0) {
 						mtx_.unlock();
-						return 0;
+						break;
 					}
 					std::size_t counter = 0;
 					for (; counter < std::min(capacity, size_.load(std::memory_order_relaxed)); counter++) {
@@ -202,10 +202,10 @@ namespace coflux {
 				}
 			}
 
-			std::lock_guard<std::mutex> lock(mtx_);
-			if (size_.load(std::memory_order_relaxed) == 0) {
-				return 0;
-			}
+			std::unique_lock<std::mutex> lock(mtx_);
+			not_empty_cv_.wait(lock, [this]() {
+				return size_.load(std::memory_order_relaxed) > 0;
+				});
 			std::size_t counter = 0;
 			for (; counter < std::min(capacity, size_.load(std::memory_order_relaxed)); counter++) {
 				*buffer++ = cont_.front();
