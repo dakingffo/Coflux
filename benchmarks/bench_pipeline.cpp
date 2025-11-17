@@ -45,7 +45,7 @@ static void BM_PipelineThroughput(benchmark::State& state) {
     for (auto _ : state) {
         state.PauseTiming();
         // Top-level task to manage the pipelines
-        auto benchmark_task = [&](const auto& env) -> coflux::task<void, PipelineExecutor, PipelineScheduler> {
+        auto benchmark_task = [concurrency, depth](auto, auto& state) -> coflux::task<void, PipelineExecutor, PipelineScheduler> {
             auto&& ctx = co_await coflux::context();
             std::vector<coflux::fork<long long, PipelineExecutor>> pipeline_final_stages;
             pipeline_final_stages.reserve(concurrency);
@@ -79,7 +79,7 @@ static void BM_PipelineThroughput(benchmark::State& state) {
             // For throughput, we let the task destructor handle the join
             co_return;
 
-            }(env); // Launch the benchmark task
+            }(env, state); // Launch the benchmark task
 
         benchmark_task.join(); // Wait for the entire batch to complete
         
