@@ -280,32 +280,97 @@ namespace coflux {
 	concept task_like = fork_lrvalue<TaskLike> || task_rvalue<TaskLike>;
 
 
+
 	template <typename TaskRange>
-	concept task_range = requires(TaskRange range) {
+	concept basic_task_range = requires(TaskRange range) {
 		requires std::ranges::forward_range<TaskRange>;
 		requires task_like<std::remove_cvref_t<decltype(*range.begin())>>;
 	};
 
 	template <typename TaskRange>
-	struct is_task_lvalue_range {
+	concept fork_element_range = requires(TaskRange range) {
+		requires basic_task_range<TaskRange>;
+		requires !std::is_reference_v<TaskRange>;
+		requires fork_lrvalue<std::remove_cvref_t<decltype(*range.begin())>>;
+	};
+
+	template <typename TaskRange>
+	struct is_fork_lvalue_range {
 		static constexpr bool value = false;
 	};
 
-	template <task_range TaskRange>
-	struct is_task_lvalue_range<TaskRange&> {
+	template <fork_element_range TaskRange>
+	struct is_fork_lvalue_range<TaskRange&> {
 		static constexpr bool value = true;
 	};
 
-	template <std::ranges::range TaskRange>
-	struct is_task_lvalue_range<std::ranges::ref_view<TaskRange>> {
+	template <fork_element_range TaskRange>
+	struct is_fork_lvalue_range<std::ranges::ref_view<TaskRange>> {
 		static constexpr bool value = true;
 	};
-
-	template <task_range TaskRange>
-	inline constexpr bool is_task_lvalue_range_v = is_task_lvalue_range<TaskRange>::value;
 
 	template <typename TaskRange>
-	concept task_lvalue_range = is_task_lvalue_range_v<TaskRange>;
+	struct is_fork_rvalue_range {
+		static constexpr bool value = false;
+	};
+
+	template <fork_element_range TaskRange>
+	struct is_fork_rvalue_range<TaskRange> {
+		static constexpr bool value = true;
+	};
+
+	template <fork_element_range TaskRange>
+	struct is_fork_rvalue_range<std::ranges::owning_view<TaskRange>> {
+		static constexpr bool value = true;
+	};
+
+	template <typename TaskRange>
+	inline constexpr bool is_fork_lvalue_range_v = is_fork_lvalue_range<TaskRange>::value;
+
+	template <typename TaskRange>
+	inline constexpr bool is_fork_rvalue_range_v = is_fork_rvalue_range<TaskRange>::value;
+
+	template <typename TaskRange>
+	struct is_fork_lrvalue_range {
+		static constexpr bool value = is_fork_lvalue_range_v<TaskRange> || is_fork_rvalue_range_v<TaskRange>;
+	};
+
+	template <typename TaskRange>
+	inline constexpr bool is_fork_lrvalue_range_v = is_fork_lrvalue_range<TaskRange>::value;
+
+	template <typename TaskRange>
+	concept fork_lrvalue_range = is_fork_lrvalue_range_v<TaskRange>;
+
+	template <typename TaskRange>
+	concept task_element_range = requires(TaskRange range) {
+		requires basic_task_range<TaskRange>;
+		requires !std::is_reference_v<TaskRange>;
+		requires task_rvalue<std::remove_cvref_t<decltype(*range.begin())>>;
+	};
+
+	template <typename TaskRange>
+	struct is_task_rvalue_range {
+		static constexpr bool value = false;
+	};
+
+	template <task_element_range TaskRange>
+	struct is_task_rvalue_range<TaskRange> {
+		static constexpr bool value = true;
+	};
+
+	template <task_element_range TaskRange>
+	struct is_task_rvalue_range<std::ranges::owning_view<TaskRange>> {
+		static constexpr bool value = true;
+	};
+
+	template <typename TaskRange>
+	inline constexpr bool is_task_rvalue_range_v = is_task_rvalue_range<TaskRange>::value;
+
+	template <typename TaskRange>
+	concept task_rvalue_range = is_task_rvalue_range_v<TaskRange>;
+
+	template <typename TaskRange>
+	concept task_like_range = fork_lrvalue_range<TaskRange> || task_rvalue_range<TaskRange>;
 
 	namespace detail {
 		template <task_like... TaskLikes>
@@ -314,7 +379,7 @@ namespace coflux {
 		template <task_like... TaskLikes>
 		using when_all_pair = std::pair<when_all_tag, std::tuple<TaskLikes...>>;
 
-		template <task_range Range>
+		template <task_like_range Range>
 		using when_n_pair = std::pair<when_n_tag, Range>;
 	}
 
@@ -326,9 +391,6 @@ namespace coflux {
 
 		template <typename Ty, bool Ownership>
 		struct promise_result_base;
-
-		template <typename Ty, bool Ownership>
-		struct promise_callback_base;
 
 		template <typename Ty>
 		struct promise_yield_base;

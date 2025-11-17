@@ -13,32 +13,25 @@ namespace coflux {
 		fixed, cached
 	};
 
-	template <std::size_t N, std::size_t Align, size_t Idle>
+	template <std::size_t N, std::size_t Align, std::size_t Idle>
 	class worksteal_thread {
 	public:
 		static_assert(!(N & (N - 1)), "N should be power of 2.");
 
-		using value_type  = std::coroutine_handle<>;
-		using pointer     = value_type*;
-		using buffer_type = value_type[N];
+		using value_type       = std::coroutine_handle<>;
+		using pointer          = value_type*;
+		using local_queue_type = ChaseLev_ring<value_type, N, Align>;
 
-		static constexpr std::size_t		  capacity		       = N;
-		static constexpr std::size_t		  mask                 = capacity - 1;
-		static constexpr std::size_t		  align			       = Align;
 		static constexpr std::chrono::seconds max_thread_idle_time = std::chrono::seconds(Idle);
 
 	public:
-		worksteal_thread() = default;
+		worksteal_thread()  = default;
 		~worksteal_thread() = default;
 
 		worksteal_thread(const worksteal_thread&)                = delete;
 		worksteal_thread(worksteal_thread&&) noexcept            = delete;
 		worksteal_thread& operator=(const worksteal_thread&)     = delete;
 		worksteal_thread& operator=(worksteal_thread&&) noexcept = delete;
-
-		pointer buffer() noexcept {
-			return buffer_;
-		}
 
 		bool active() noexcept {
 			return active_;
@@ -61,8 +54,7 @@ namespace coflux {
 		) {
 			thread_size++;
 			active_ = true;
-			head_.store(0, std::memory_order_relaxed);
-			tail_.store(0, std::memory_order_relaxed);
+			deque_.reset();
 			thread_ = std::thread(std::bind(
 				&worksteal_thread::work<TaskQueue>,
 				this,
@@ -77,7 +69,7 @@ namespace coflux {
 
 		template <typename TaskQueue>
 		void work(
-			TaskQueue& task_queue,
+			TaskQueue&										task_queue,
 			mode											run_mode,
 			std::atomic_bool&								running,
 			std::atomic<std::size_t>&						thread_size,
@@ -86,7 +78,7 @@ namespace coflux {
 		) {
 			thread_local std::mt19937 mt(std::random_device{}());
 			auto last_time = std::chrono::high_resolution_clock().now();
-			std::size_t n;
+			std::size_t n = 0;
 			while (true) {
 				if (!running.load(std::memory_order_acquire)) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					return;
@@ -94,12 +86,12 @@ namespace coflux {
 
 				switch (run_mode) {
 				case mode::fixed: {
-					n = task_queue.wait_dequeue_bulk(Receive(), capacity);
-					tail_.fetch_add(n, std::memory_order_seq_cst);
+					n = task_queue.wait_dequeue_bulk(Receive(), N);
+					deque_.tail().fetch_add(n, std::memory_order_release);
 					break;
 				}
 				case mode::cached: {
-					if (!(n = task_queue.wait_dequeue_bulk_timed(Receive(), capacity, max_thread_idle_time))) {
+					if (!(n = task_queue.wait_dequeue_bulk_timed(Receive(), N, max_thread_idle_time))) {
 						auto now_time = std::chrono::high_resolution_clock().now();
 						auto during = std::chrono::duration_cast<std::chrono::seconds>(now_time - last_time);
 						if (!(thread_size == basic_thread_size || during <= max_thread_idle_time)) {
@@ -108,7 +100,7 @@ namespace coflux {
 						}
 					}
 					else {
-						tail_.fetch_add(n, std::memory_order_seq_cst);
+						deque_.tail().fetch_add(n, std::memory_order_release);
 					}
 					break;
 				}
@@ -128,34 +120,19 @@ namespace coflux {
 		}
 
 	private:
-		ring_iterator<worksteal_thread> Receive() {
-			return { head_.load(std::memory_order_relaxed), 0, buffer_, capacity };
+		auto Receive() const noexcept {
+			return deque_.begin();
 		}
 
-		void Finish(std::atomic<std::size_t>& thread_size) {
+		void Finish(std::atomic<std::size_t>& thread_size) noexcept {
 			thread_size--;
 			active_ = false;
 		}
 		
 		void Handle_local() noexcept {
-			while (true) {
-				std::size_t t = tail_.fetch_sub(1, std::memory_order_relaxed) - 1;
-				std::atomic_thread_fence(std::memory_order_seq_cst);
-				std::size_t h = head_.load(std::memory_order_relaxed);
-				if (h <= t) {
-					if (h == t) {
-						if (!head_.compare_exchange_strong(h, h + 1, std::memory_order_seq_cst, std::memory_order_relaxed)) {
-							tail_.store(t + 1, std::memory_order_release);
-							return;
-						}
-						tail_.store(t + 1, std::memory_order_relaxed);
-					}
-					buffer_[t & mask].resume();
-				}
-				else {
-					tail_.store(t + 1, std::memory_order_relaxed);
-					return;
-				}
+			value_type handle = nullptr;
+			while (handle = deque_.pop_back()) {
+				handle.resume();
 			}
 		}
 
@@ -167,40 +144,20 @@ namespace coflux {
 				if (threads[idx].get() == this || (run_mode == mode::cached ? !threads[idx]->active_.load(std::memory_order_relaxed) : false)) {
 					continue;
 				}
-				value_type handle = Steal(*threads[idx]);
+				value_type handle = threads[idx]->Steal();
 				if (handle) {
 					handle.resume();
 				}
 			}
 		}
 
-		COFLUX_ATTRIBUTES(COFLUX_NO_TSAN) value_type Steal(worksteal_thread& victim) noexcept {
-			std::size_t h = victim.head_.load(std::memory_order_acquire);
-			std::atomic_thread_fence(std::memory_order_seq_cst);
-			std::size_t t = victim.tail_.load(std::memory_order_acquire);
-			if (h < t) {
-				value_type res = victim.buffer_[h & mask]; // This will be midundersrtood by TSAN
-				if (!victim.head_.compare_exchange_strong(h, h + 1,
-					std::memory_order_seq_cst, std::memory_order_relaxed)) {
-					return nullptr;
-				}
-				else {
-					// We read it first, then decide return handle or not, 
-					// so that we avoid the race data between Steal and wait_dequeue_bulk
-					return res;
-				}
-			}
-			else {
-				return nullptr;
-			}
+		value_type Steal() noexcept {
+			return deque_.pop_front();
 		}
 
-		std::atomic_bool      active_ = false;
-		std::thread           thread_;
-
-		alignas(align) std::atomic_size_t  head_ = 0;
-		alignas(align) buffer_type		   buffer_;
-		alignas(align) std::atomic_size_t  tail_ = 0;
+		std::atomic_bool active_ = false;
+		std::thread      thread_;
+		local_queue_type deque_;
 	};
 }
 

@@ -626,7 +626,7 @@ namespace coflux {
 				std::move(when_all.second), executor_, &(this->get_status()));
 		}
 
-		template <task_range Range>
+		template <task_like_range Range>
 		auto await_transform(detail::when_n_pair<Range>&& when_n) noexcept {
 			return awaiter<detail::when_n_pair<Range>, executor_type>(when_n.first.n_,
 				std::forward<Range>(when_n.second), executor_, &(this->get_status()));

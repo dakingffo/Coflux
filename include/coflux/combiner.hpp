@@ -323,7 +323,7 @@ namespace coflux {
         std::mutex                           mtx_;
     };
 
-    template <task_range Range, executive Executor>
+    template <task_like_range Range, executive Executor>
     struct awaiter<detail::when_n_pair<Range>, Executor> : public detail::maysuspend_awaiter_base {
     public:
         using task_type        = std::ranges::views::all_t<Range>;
@@ -393,7 +393,7 @@ namespace coflux {
                     }
                     else {
                         result->second.emplace_back(std::forward<
-                            std::conditional_t<is_task_lvalue_range_v<task_type>,
+                            std::conditional_t<is_fork_lvalue_range_v<task_type>,
                             std::remove_reference_t<decltype(basic_task_result)>&,
                             std::remove_reference_t<decltype(basic_task_result)>>
                             >(basic_task_result).value());
@@ -524,13 +524,13 @@ namespace coflux {
             struct when_closure {
                 std::size_t N_;
 
-                template <task_range Range>
+                template <task_like_range Range>
                 friend auto operator|(Range&& tasks, const when_closure& self) {
                     return when_functor{}(std::forward<Range>(tasks), self.N_);
                 }
             };
 
-            template <task_range Range>
+            template <task_like_range Range>
             auto operator()(Range&& tasks, std::size_t n = -1) const {
                 return when_n_pair<Range>(when_n_tag{ n }, std::forward<Range>(tasks));
             }
@@ -539,7 +539,7 @@ namespace coflux {
                 return when_closure{ n };
             };
 
-            template <task_range Range>
+            template <task_like_range Range>
             friend auto operator|(Range&& tasks, const when_functor& self) {
                 return when_functor{}(std::forward<Range>(tasks));
             }
