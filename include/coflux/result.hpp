@@ -14,7 +14,7 @@ namespace coflux {
 			using value_type = Ty;
 			using error_type = std::exception_ptr;
 
-			result() : error_(nullptr), st_(running) {}
+			result() : error_(nullptr), st_(unprepared) {}
 			~result() {
 				status st = st_.load(std::memory_order_acquire);
 				if (st == completed) {
@@ -78,7 +78,7 @@ namespace coflux {
 			using value_type = void;
 			using error_type = std::exception_ptr;
 
-			result() : error_(nullptr), st_(running) {}
+			result() : error_(nullptr), st_(unprepared) {}
 			~result() {
 				status st = st_.load(std::memory_order_acquire);
 				if (st == failed || st == handled) {

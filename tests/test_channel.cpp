@@ -1,110 +1,205 @@
 #include <gtest/gtest.h>
-#include <coflux/task.hpp>
 #include <coflux/channel.hpp>
+#include <coflux/task.hpp>
+#include <coflux/scheduler.hpp>
+#include <coflux/executor.hpp>
 #include <coflux/combiner.hpp>
-/* mpmc_queue of channel coming soon...
-using TestExecutor = coflux::thread_pool_executor<>;
-using TestScheduler = coflux::scheduler<TestExecutor, coflux::timer_executor>;
+#include <coflux/this_coroutine.hpp> // for yield/sleep
+#include <vector>
+#include <thread>
+#include <numeric>
+/* testing...
+using namespace coflux;
 
-TEST(ChannelTest, UnbufferedSendReceive) {
-    auto env = coflux::make_environment(TestScheduler{});
-    auto test_task = [](auto env) -> coflux::task<int, TestExecutor, TestScheduler> {
-        coflux::channel<int[]> ch;
+// 使用默认线程池
+using pool = thread_pool_executor<>;
+using sche = scheduler<pool>;
 
-        auto producer = [](auto&&, auto& ch) -> coflux::fork<void, TestExecutor> {
-            co_await(ch << 42);
-            };
+// --- 1. SPSC 基础测试 (非阻塞模式) ---
+TEST(ChannelTest, BasicSPSC) {
+    auto env = make_environment(sche{});
 
-        auto consumer = [](auto&&, auto& ch) -> coflux::fork<int, TestExecutor> {
+    auto test = [](auto env) -> task<void, pool> {
+        channel<int[8]> chan; // 有界通道 (非阻塞)
+
+        // 生产者
+        auto producer = [](auto&&, channel<int[8]>& chan) -> fork<void, pool> {
+            for (int i = 0; i < 100; ++i) {
+                // 自旋重试直到写入成功
+                while (!co_await(chan << i)) {
+                    std::this_thread::yield(); // 或者 co_await this_fork::yield();
+                }
+            }
+            }(co_await context(), chan);
+
+        // 消费者
+        auto consumer = [](auto&&, channel<int[8]>& chan) -> fork<void, pool> {
             int val;
-            co_await(ch >> val);
-            co_return val;
-            };
+            for (int i = 0; i < 100; ++i) {
+                // 自旋重试直到读取成功
+                while (!co_await(chan >> val)) {
+                    std::this_thread::yield();
+                }
+                EXPECT_EQ(val, i);
+            }
+            }(co_await context(), chan);
 
-        auto p_fork = producer(co_await coflux::context(), ch);
-        auto c_fork = consumer(co_await coflux::context(), ch);
-
-        // 等待consumer返回结果
-        int result = co_await std::move(c_fork);
-        co_await std::move(p_fork); // 确保producer也完成
-        co_return result;
+        co_await when_all(producer, consumer);
         }(env);
-    EXPECT_EQ(test_task.get_result(), 42);
+
+    test.join();
 }
 
+// --- 2. MPMC 高并发测试 (非阻塞压力测试) ---
+TEST(ChannelTest, ConcurrentMPMC) {
+    auto env = make_environment(sche{});
 
-TEST(ChannelTest, CloseUnblocksWaitingReader) {
-    auto env = coflux::make_environment(TestScheduler{});
-    auto test_task = [](auto env) -> coflux::task<bool, TestExecutor, TestScheduler> {
-        coflux::channel<int[1]> ch;
+    auto test = [](auto env) -> task<void, pool> {
+        // 容量较小，强制触发满/空状态
+        channel<int[32]> chan;
+        const int N_PRODUCERS = 4;
+        const int N_CONSUMERS = 4;
+        const int ITEMS_PER_PRODUCER = 10000;
 
-        auto consumer = [](auto&&, auto& ch) -> coflux::fork<bool, TestExecutor> {
-            int val;
-            // 当channel被关闭后，这个co_await应该返回false
-            bool success = co_await(ch >> val);
-            co_return success;
-            };
+        std::atomic<int> total_consumed = 0;
 
-        auto&& c_fork = consumer(co_await coflux::context(), ch);
-
-        // 另起一个fork去关闭channel
-        [](auto&&, auto& ch) -> coflux::fork<void, TestExecutor> {
-            co_await std::chrono::milliseconds(50);
-            ch.close();
-            }(co_await coflux::context(), ch);
-
-        bool result = co_await std::move(c_fork);
-        co_return result;
-        }(env);
-    EXPECT_FALSE(test_task.get_result());
-}
-
-TEST(ChannelTest, BufferedMpmcStress) {
-    using StressExecutor = coflux::thread_pool_executor<>;
-    using StressScheduler = coflux::scheduler<StressExecutor>;
-    auto env = coflux::make_environment<StressScheduler>(StressExecutor{ 4 });
-
-    auto test_task = [](auto&& env) -> coflux::task<int, StressExecutor, StressScheduler> {
-        coflux::channel<int[10]> ch;
-        std::atomic<int> sum = 0;
-        const int items_per_producer = 1000;
-
-        auto producer = [&](auto&&, int start_val) -> coflux::fork<void, StressExecutor> {
-            for (int i = 0; i < items_per_producer; ++i) {
-                co_await(ch << (start_val + i));
+        // 生产者任务
+        auto make_producer = [&chan](auto&&, int id) -> fork<void, pool> {
+            for (int i = 0; i < ITEMS_PER_PRODUCER; ++i) {
+                int val = id * 100000 + i;
+                // 遇到满队列则自旋重试
+                while (!co_await(chan << val)) {
+                    std::this_thread::yield();
+                }
             }
             };
 
-        auto consumer = [&](auto&&, std::atomic<int>& sum) -> coflux::fork<void, StressExecutor> {
+        // 消费者任务
+        auto make_consumer = [&chan, &total_consumed](auto&&) -> fork<void, pool> {
             int val;
-            while (co_await(ch >> val)) {
-                sum += val;
+            // 消费定额数据
+            for (int i = 0; i < ITEMS_PER_PRODUCER; ++i) {
+                // 遇到空队列则自旋重试
+                while (!co_await(chan >> val)) {
+                    std::this_thread::yield();
+                }
+                total_consumed.fetch_add(1, std::memory_order_relaxed);
             }
             };
 
-        auto&& env_fork = co_await coflux::context();
-        // 启动生产者和消费者
-        consumer(env_fork, sum);
-        consumer(env_fork, sum);
-        co_await coflux::when_all(
-            producer(env_fork, 10000),
-            producer(env_fork, 20000)
+        std::vector<fork<void, pool>> producers;
+        std::vector<fork<void, pool>> consumers;
 
-        );
-        // 所有生产者完成后，关闭channel以结束消费者
-        ch.close();
+        auto&& ctx = co_await context();
+        for (int i = 0; i < N_PRODUCERS; ++i) producers.push_back(make_producer(ctx, i));
+        for (int i = 0; i < N_CONSUMERS; ++i) consumers.push_back(make_consumer(ctx));
 
-        co_return sum.load();
+        // 等待所有任务完成
+        for (auto& p : producers) co_await p;
+        for (auto& c : consumers) co_await c;
+
+        EXPECT_EQ(total_consumed.load(), N_PRODUCERS * ITEMS_PER_PRODUCER);
+
         }(env);
 
-    int expected_sum = 0;
-    for (int i = 0; i < 1000; ++i) expected_sum += 10000 + i;
-    for (int i = 0; i < 1000; ++i) expected_sum += 20000 + i;
-
-    // 因为存在数据竞争，我们不能精确断言，但可以验证求和的逻辑
-    // 这里我们直接返回结果，并在主线程中断言。更好的方法是在task内部完成断言。
-    // 可能需要更复杂的同步来保证断言的确定性。
-    // 简化，只运行并获取结果。
-    test_task.join();
+    test.join();
 }
+
+// --- 3. 非阻塞语义测试  ---
+TEST(ChannelTest, NonBlockingSemantics) {
+    auto env = make_environment(sche{});
+
+    auto test = [](auto env) -> task<void, pool> {
+        channel<int[2]> chan; // 容量为 2
+
+        // 填满通道
+        EXPECT_TRUE(co_await(chan << 1));
+        EXPECT_TRUE(co_await(chan << 1));
+
+        // 再次写入应立即失败 (返回 false)，而不是挂起
+        EXPECT_FALSE(co_await(chan << 2));
+
+        // 读取数据
+        int val;
+        EXPECT_TRUE(co_await(chan >> val));
+        EXPECT_EQ(val, 1);
+        EXPECT_TRUE(co_await(chan >> val));
+        EXPECT_EQ(val, 1);
+
+        // 再次读取应立即失败 (返回 false)，而不是挂起
+        EXPECT_FALSE(co_await(chan >> val));
+
+        }(env);
+
+    test.join();
+}
+
+
+// --- 4. 关闭通道测试 ---
+TEST(ChannelTest, CloseChannel) {
+    auto env = make_environment(sche{});
+
+    auto test = [](auto env) -> task<void, pool> {
+        channel<int[16]> chan;
+
+        // 消费者
+        auto consumer = [](auto&&, channel<int[16]>& chan) -> fork<void, pool> {
+            int val;
+            // 等待数据
+            while (!co_await(chan >> val)) {
+                if (!chan.active()) break; // 如果非阻塞读取失败且通道已关闭，退出
+                std::this_thread::yield();
+            }
+            EXPECT_EQ(val, 42);
+
+            // 通道关闭后，读取应持续失败 (返回 false)
+            // 需要通过 chan.active() 来区分是“暂时没数据”还是“永远没了”
+
+            // 等待生产者关闭
+            while (chan.active()) std::this_thread::yield();
+
+            EXPECT_FALSE(co_await(chan >> val));
+            }(co_await context(), chan);
+
+        // 生产者
+        auto producer = [](auto&&, channel<int[16]>& chan) -> fork<void, pool> {
+            while (!co_await(chan << 42)); // 写入数据
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            chan.close();
+            }(co_await context(), chan);
+
+        co_await when_all(producer, consumer);
+        }(env);
+
+    test.join();
+}
+
+// --- 5. 无缓冲 Channel (Ty[]) 测试 (协程挂起) ---
+TEST(ChannelTest, UnbufferedChannel) {
+    auto env = make_environment(sche{});
+
+    auto test = [](auto env) -> task<void, pool> {
+        channel<int[]> chan; // 无缓冲，阻塞式
+
+        // 生产者
+        auto producer = [](auto&&, channel<int[]>& chan) -> fork<void, pool> {
+            // 这是阻塞操作，必须等待消费者
+            co_await(chan << 100);
+            }(co_await context(), chan);
+
+        // 消费者
+        auto consumer = [](auto&&, channel<int[]>& chan) -> fork<void, pool> {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            int val;
+            // 这是阻塞操作
+            co_await(chan >> val);
+            EXPECT_EQ(val, 100);
+            }(co_await context(), chan);
+
+        co_await when_all(producer, consumer);
+        }(env);
+
+    test.join();
+}
+
 */

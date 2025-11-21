@@ -556,7 +556,7 @@ namespace coflux {
 		}
 
 		auto initial_suspend() noexcept {
-			return detail::dispatch_awaiter<Ownership, executor_type, Initial>(executor_);
+			return detail::dispatch_awaiter<Ownership, executor_type>(executor_, &(this->get_status()));
 		}
 
 		task_type get_return_object() noexcept {
@@ -575,6 +575,15 @@ namespace coflux {
 		auto await_transform(const std::chrono::duration<Rep, Period>& sleep_time) noexcept {
 			return detail::sleep_awaiter<Executor>(/* Capture executor in awaite_suspend */
 				std::chrono::duration_cast<std::chrono::milliseconds>(sleep_time), &(this->get_status()));
+		}
+
+		template <typename Rep, typename Period>
+		auto await_transform(const detail::sleep_t<Ownership, Rep, Period>& sleep_request) noexcept {
+			return await_transform<Rep, Period>(sleep_request.dur_);
+		}
+
+		auto await_transform(detail::yield_t<Ownership> yield_request) noexcept {
+			return initial_suspend();
 		}
 
 		auto await_transform(detail::cancel_awaiter<Ownership>&& awaiter) noexcept {

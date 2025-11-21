@@ -65,7 +65,7 @@ namespace coflux {
 		failed,			// coroutine throw an exception
 		cancelled,		// coroutine is cancelled
 		handled,		// coroutine exception_ptr is moved
-		unprepared,		// generator have nothing
+		unprepared,		// coroutine frame is not prepared / generator has not yield a value
 		invalid			// handle is nullptr
 	};
 

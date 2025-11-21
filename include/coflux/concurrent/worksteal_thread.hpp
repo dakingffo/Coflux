@@ -9,13 +9,14 @@
 #include "ring.hpp"
 
 namespace coflux {
-	enum class mode : bool {
+	enum mode {
 		fixed, cached
 	};
 
 	template <std::size_t N, std::size_t Align, std::size_t Idle>
 	class worksteal_thread {
 	public:
+		static_assert(  N,			  "N shoud be larger than zero");
 		static_assert(!(N & (N - 1)), "N should be power of 2.");
 
 		using value_type       = std::coroutine_handle<>;
@@ -77,13 +78,24 @@ namespace coflux {
 			std::vector<std::unique_ptr<worksteal_thread>>& threads
 		) {
 			thread_local std::mt19937 mt(std::random_device{}());
-			auto last_time = std::chrono::high_resolution_clock().now();
 			std::size_t n = 0;
 			while (true) {
 				if (!running.load(std::memory_order_acquire)) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					return;
 				}
+				// try get task from global queue
+				if (n = task_queue.try_dequeue_bulk(Receive(), N)) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
+					deque_.tail().fetch_add(n, std::memory_order_release);
+					Handle_local();
+				}
 
+				// try steal from other threads
+				if (Try_steal(run_mode, threads, mt)) {
+					continue;
+				}
+
+
+				// wait for new tasks
 				switch (run_mode) {
 				case mode::fixed: {
 					n = task_queue.wait_dequeue_bulk(Receive(), N);
@@ -92,9 +104,7 @@ namespace coflux {
 				}
 				case mode::cached: {
 					if (!(n = task_queue.wait_dequeue_bulk_timed(Receive(), N, max_thread_idle_time))) {
-						auto now_time = std::chrono::high_resolution_clock().now();
-						auto during = std::chrono::duration_cast<std::chrono::seconds>(now_time - last_time);
-						if (!(thread_size == basic_thread_size || during <= max_thread_idle_time)) {
+						if (!(thread_size == basic_thread_size)) {
 							Finish(thread_size);
 							return;
 						}
@@ -110,12 +120,8 @@ namespace coflux {
 					if (n) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 						Handle_local();
 					}
-					Try_steal(run_mode, threads, mt);
 				}
 
-				if (run_mode == mode::cached) {
-					last_time = std::chrono::high_resolution_clock().now();
-				}
 			}
 		}
 
@@ -131,15 +137,16 @@ namespace coflux {
 		
 		void Handle_local() noexcept {
 			value_type handle = nullptr;
-			while (handle = deque_.pop_back()) {
+			while (handle = deque_.try_pop_back()) {
 				handle.resume();
 			}
 		}
 
-		void Try_steal(mode run_mode, std::vector<std::unique_ptr<worksteal_thread>>& threads, std::mt19937& mt) noexcept {
+		bool Try_steal(mode run_mode, std::vector<std::unique_ptr<worksteal_thread>>& threads, std::mt19937& mt) noexcept {
 			std::size_t threads_size = threads.size();
 			std::size_t begin_pos = (std::size_t)mt() & (threads_size - 1);
-			for (int i = 0; i < (threads_size >> 1); i++) {
+			bool stolen = false;
+			for (int i = 0; i < threads_size; i++) {
 				size_t idx = (i + begin_pos) & (threads_size - 1);
 				if (threads[idx].get() == this || (run_mode == mode::cached ? !threads[idx]->active_.load(std::memory_order_relaxed) : false)) {
 					continue;
@@ -147,12 +154,14 @@ namespace coflux {
 				value_type handle = threads[idx]->Steal();
 				if (handle) {
 					handle.resume();
+					stolen = true;
 				}
 			}
+			return stolen;
 		}
 
 		value_type Steal() noexcept {
-			return deque_.pop_front();
+			return deque_.try_pop_front();
 		}
 
 		std::atomic_bool active_ = false;

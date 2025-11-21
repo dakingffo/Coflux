@@ -242,7 +242,7 @@ namespace coflux {
         template <bool Ownership>
         struct destroy_awaiter;
         */
-        template <bool Ownership, executive Executor, typename Suspend>
+        template <bool Ownership, executive Executor>
         struct dispatch_awaiter;
 
         template <executive Executor>

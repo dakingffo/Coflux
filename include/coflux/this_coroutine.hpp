@@ -83,17 +83,17 @@ namespace coflux {
             }
         };
         */
-        template <bool Ownership, executive Executor, typename Suspend = std::suspend_never>
-        struct dispatch_awaiter : public Suspend, public maysuspend_awaiter_base, public ownership_tag<Ownership> {
+        template <bool Ownership, executive Executor>
+        struct dispatch_awaiter : public maysuspend_awaiter_base, public ownership_tag<Ownership> {
             using executor_traits  = coflux::executor_traits<Executor>;
             using executor_type    = typename executor_traits::executor_type;
             using executor_pointer = typename executor_traits::executor_pointer;
 
-            explicit dispatch_awaiter(executor_pointer exec)
-                : executor_(exec) {
+            explicit dispatch_awaiter(executor_pointer exec, std::atomic<status>* p)
+                : executor_(exec), maysuspend_awaiter_base{ p } {
             }
-            explicit dispatch_awaiter(executor_type& exec)
-                : executor_(&exec) {
+            explicit dispatch_awaiter(executor_type& exec, std::atomic<status>* p)
+                : executor_(&exec), maysuspend_awaiter_base{ p } {
             }
             ~dispatch_awaiter() = default;
 
@@ -107,22 +107,12 @@ namespace coflux {
             }
 
             void await_suspend(std::coroutine_handle<> handle) {
-                if (this->waiter_status_) {
-                    maysuspend_awaiter_base::await_suspend();
-                }
-                if (!Suspend::await_ready()) {
-                    Suspend::await_suspend(std::noop_coroutine());
-                }
-                if constexpr (!await_ready_false<Suspend>) {
-                    executor_traits::execute(executor_, handle);
-                }
+                maysuspend_awaiter_base::await_suspend();
+                executor_traits::execute(executor_, handle);
             }
 
             void await_resume() {
-                Suspend::await_resume();
-                if (this->waiter_status_) {
-                    maysuspend_awaiter_base::await_resume();
-                }
+                maysuspend_awaiter_base::await_resume();
             }
 
             executor_pointer executor_;
@@ -168,9 +158,13 @@ namespace coflux {
             std::chrono::milliseconds timer_;
         };
 
-        inline std::chrono::milliseconds sleep_for(std::chrono::milliseconds timer) noexcept {
-            return { timer };
-        }
+        template <bool Ownership, typename Rep, typename Period>
+        struct sleep_t : public ownership_tag<Ownership> {
+            std::chrono::duration<Rep, Period> dur_;
+        };
+
+        template <bool Ownership>
+        struct yield_t : public ownership_tag<Ownership> {};
 
         template <bool Ownership>
         struct get_stop_token_awaiter : public nonsuspend_awaiter_base, public ownership_tag<Ownership> {
@@ -448,7 +442,15 @@ namespace coflux {
         inline auto dispatch(Executor* exec) noexcept {
             return detail::dispatch_awaiter<true, Executor, std::suspend_never>{ exec };
         }
-        using detail::sleep_for;
+
+        template <typename Rep, typename Period>
+        inline auto sleep_for(const std::chrono::duration<Rep, Period>& sleep_time) noexcept {
+            return detail::sleep_t<true, Rep, Period>{sleep_time};
+        }
+
+        inline auto yield() noexcept {
+            return detail::yield_t<true>{};
+        }
 
         // cancellation operations
         inline auto get_stop_token() noexcept {
@@ -486,7 +488,15 @@ namespace coflux {
         inline auto dispatch(Executor* exec) noexcept {
             return detail::dispatch_awaiter<false, Executor, std::suspend_never>{ exec };
         }
-        using detail::sleep_for;
+
+        template <typename Rep, typename Period>
+        inline auto sleep_for(const std::chrono::duration<Rep, Period>& sleep_time) noexcept {
+            return detail::sleep_t<false, Rep, Period>{sleep_time};
+        }
+
+        inline auto yield() noexcept {
+            return detail::yield_t<false>{};
+        }
 
         // cancellation operations
         inline auto get_stop_token() noexcept {

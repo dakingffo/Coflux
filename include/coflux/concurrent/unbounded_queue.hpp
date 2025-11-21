@@ -89,12 +89,9 @@ namespace coflux {
 			return size_.load(std::memory_order_acquire);
 		}
 
-		void push(const_reference value) {
-			enqueue(value);
-		}
-
-		void push(reference& value) {
-			enqueue(std::move(value));
+		template <typename Ref>
+		void push(Ref&& value) {
+			enqueue(std::forward<Ref>(value));
 		}
 
 		bool pop(const std::atomic_bool& continuation = true) {
@@ -229,6 +226,43 @@ namespace coflux {
 				return 0;
 			}
 			int counter = 0;
+			for (; counter < std::min(capacity, size_.load(std::memory_order_relaxed)); counter++) {
+				*buffer++ = cont_.front();
+				cont_.pop_front();
+			}
+			if (size_.fetch_sub(counter, std::memory_order_release)) {
+				not_empty_cv_.notify_one();
+			}
+			return counter;
+		}
+
+		template <typename ForwardIt>
+		size_type try_dequeue_bulk(ForwardIt buffer, std::size_t capacity) {
+			for (int i = 0; i < constant_traits::DEQUEUE_SPIN_TIMES; i++) {
+				if (mtx_.try_lock()) {
+					if (size_.load(std::memory_order_relaxed) == 0) {
+						mtx_.unlock();
+						break;
+					}
+					std::size_t counter = 0;
+					for (; counter < std::min(capacity, size_.load(std::memory_order_relaxed)); counter++) {
+						*buffer++ = cont_.front();
+						cont_.pop_front();
+					}
+					size_.fetch_sub(counter, std::memory_order_release);
+					mtx_.unlock();
+					return counter;
+				}
+				if (i & (constant_traits::DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD - 1)) {
+					std::this_thread::yield();
+				}
+			}
+
+			std::unique_lock<std::mutex> lock(mtx_);
+			if (size_ == 0) {
+				return 0;
+			}
+			std::size_t counter = 0;
 			for (; counter < std::min(capacity, size_.load(std::memory_order_relaxed)); counter++) {
 				*buffer++ = cont_.front();
 				cont_.pop_front();

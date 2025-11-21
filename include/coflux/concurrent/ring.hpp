@@ -6,6 +6,8 @@
 #define COFLUX_SYNC_CIRCULAR_BUFFER_HPP
 
 #include "../forward_declaration.hpp"
+#include "sequence_lock.hpp"
+
 namespace coflux {
 	inline constexpr std::size_t size_upper(std::size_t n) noexcept {
 		n--;
@@ -30,11 +32,11 @@ namespace coflux {
 		ring_iterator(
 			std::size_t       head,
 			std::size_t       pos,
-			const value_type* buffer,
+			const value_type* buf,
 			std::size_t       capacity
 		)   : head_(head)
 			, pos_(pos)
-			, buffer_(const_cast<pointer>(buffer))
+			, buffer_(const_cast<pointer>(buf))
 			, capacity_(capacity) {}
 		~ring_iterator() = default;
 
@@ -73,16 +75,17 @@ namespace coflux {
 	class unsync_ring {
 	public:
 		static_assert(std::is_default_constructible_v<Ty>, "unsync_ring only support the type which is default_constructible.");
+		static_assert(std::is_move_constructible_v<Ty>,    "unsync_ring only support the type which is move_constructible.");
 
-		using buffer_type = std::vector<Ty, Allocator>;
+		using buffer = std::vector<Ty, Allocator>;
 
-		using value_type      = typename buffer_type::value_type;
-		using size_type       = typename buffer_type::size_type;
-		using reference       = typename buffer_type::reference;
-		using const_reference = typename buffer_type::const_reference;
+		using value_type      = typename buffer::value_type;
+		using size_type       = typename buffer::size_type;
+		using reference       = typename buffer::reference;
+		using const_reference = typename buffer::const_reference;
 
 		using iterator       = ring_iterator<unsync_ring>;
-		using allocator_type = buffer_type::allocator_type;
+		using allocator_type = buffer::allocator_type;
 
 		static constexpr size_type initial_capacity = 32;
 
@@ -133,18 +136,18 @@ namespace coflux {
 			size_--;
 		}
 
-		template <typename Ref>
-		void push_back(Ref&& value) {
+		template <typename...Args>
+		void push_back(Args&&... args) {
 			if (size_ == capacity()) {
 				reserve(capacity() * 2);
 			}
-			vec_[tail_] = value_type(std::forward<Ref>(value));
+			vec_[tail_] = value_type(std::forward<Args>(args)...);
 			tail_ = (tail_ + 1) & (capacity() - 1);
 			size_++;
 		}
 
 		void reserve(size_type count) {
-			buffer_type new_vec(count, vec_.get_allocator());
+			buffer new_vec(count, vec_.get_allocator());
 			for (size_type i = 0; i < size_; i++) {
 				new_vec[i] = std::move(vec_[(head_ + i) & (vec_.capacity() - 1)]);
 			}
@@ -162,10 +165,10 @@ namespace coflux {
 		}
 
 	private:
-		size_type   head_;
-		size_type   tail_;
-		size_type   size_;
-		buffer_type vec_;
+		size_type head_;
+		size_type tail_;
+		size_type size_;
+		buffer    vec_;
 	};
 
 	template <typename Ty, std::size_t N, std::size_t Align>
@@ -174,14 +177,19 @@ namespace coflux {
 		/*
 		*			SPMC <- head(front)-------------tail(back) <-> SPSC
 		*/
+		static_assert(std::is_assignable_v<Ty, nullptr_t>, "ChaseLev_ring only support the type which is assignable from nullptr.");
 		static_assert(std::is_default_constructible_v<Ty>, "ChaseLev_ring only support the type which is default_constructible.");
+		static_assert(std::is_move_constructible_v<Ty>,    "ChaseLev_ring only support the type which is move_constructible.");
 
-		using buffer_type = std::array<Ty, N>;
+		static_assert(  N,			 "N shoud be larger than zero");
+		static_assert(!(N& (N - 1)), "N should be power of 2.");
 
-		using value_type      = typename buffer_type::value_type;
-		using size_type       = typename buffer_type::size_type;
-		using reference       = typename buffer_type::reference;
-		using const_reference = typename buffer_type::const_reference;
+		using buffer = std::array<Ty, N>;
+
+		using value_type      = typename buffer::value_type;
+		using size_type       = typename buffer::size_type;
+		using reference       = typename buffer::reference;
+		using const_reference = typename buffer::const_reference;
 
 		using iterator = ring_iterator<ChaseLev_ring>;
 		
@@ -204,7 +212,7 @@ namespace coflux {
 			tail_.store(0, std::memory_order_relaxed);
 		}
 
-		COFLUX_ATTRIBUTES(COFLUX_NO_TSAN) value_type pop_back() noexcept {
+		COFLUX_ATTRIBUTES(COFLUX_NO_TSAN) value_type try_pop_back() noexcept {
 			size_type t = tail_.fetch_sub(1, std::memory_order_relaxed) - 1;
 			std::atomic_thread_fence(std::memory_order_seq_cst);
 			size_type h = head_.load(std::memory_order_relaxed);
@@ -224,7 +232,7 @@ namespace coflux {
 			}
 		}
 
-		value_type pop_front() noexcept {
+		value_type try_pop_front() noexcept {
 			size_type h = head_.load(std::memory_order_acquire);
 			std::atomic_thread_fence(std::memory_order_seq_cst);
 			size_type t = tail_.load(std::memory_order_acquire);
@@ -292,9 +300,132 @@ namespace coflux {
 		}
 
 	private:
-		alignas(align) std::atomic_size_t  head_ = 0;
-		alignas(align) buffer_type		   buffer_{};
-		alignas(align) std::atomic_size_t  tail_ = 0;
+		alignas(align) std::atomic_size_t head_ = 0;
+		alignas(align) buffer		      buffer_{};
+		alignas(align) std::atomic_size_t tail_ = 0;
+	};
+
+	template <typename Ty, std::size_t N, std::size_t Align>
+	class MPMC_ring {
+	public:
+		static_assert(std::is_move_constructible_v<Ty>, "MPMC_ring only support the type which is move_constructible.");
+
+		static_assert( N,			  "N shoud be larger than zero");
+		static_assert(!(N & (N - 1)), "N should be power of 2.");
+
+		using slot   = sequence_lock<Ty, Align>;
+		using buffer = std::array<slot, N>;
+
+		using value_type      = typename slot::value_type;
+		using size_type       = typename slot::size_type;
+		using reference       = typename buffer::reference;
+		using const_reference = typename buffer::const_reference;
+
+		using iterator = ring_iterator<MPMC_ring>;
+
+		static constexpr size_type mask  = N - 1;
+		static constexpr size_type align = Align;
+
+	public:
+		MPMC_ring() {
+			reset();
+		}
+		~MPMC_ring() = default;
+
+		MPMC_ring(const MPMC_ring&)            = delete;
+		MPMC_ring(MPMC_ring&&)                 = delete;
+		MPMC_ring& operator=(const MPMC_ring&) = delete;
+		MPMC_ring& operator=(MPMC_ring&&)      = delete;
+		
+		void reset() /* Unsync */ noexcept {
+			buffer_ = std::make_unique<buffer>();
+			head_.store(0, std::memory_order_seq_cst);
+			tail_.store(0, std::memory_order_seq_cst);
+		}
+
+		template <typename...Args>
+		void push_back(Args&&...args) {
+			size_type head = head_.fetch_add(1, std::memory_order_acq_rel);
+			(*buffer_)[head & mask].spin_until_store(Sequence(head) << 1, std::forward<Args>(args)...);
+		}
+
+		value_type pop_front() {
+			size_type tail = tail_.fetch_add(1, std::memory_order_acq_rel);
+			return (*buffer_)[tail & mask].spin_until_load((Sequence(tail) << 1) + 1);
+		}
+
+		template <typename...Args>
+		bool try_push_back(Args&&...args) {
+			while (true) {
+				size_type head = head_.load(std::memory_order_acquire);
+				auto& slt = (*buffer_)[head & mask];
+				if ((Sequence(head) << 1) == slt.sequence_.load(std::memory_order_acquire)) {
+					if (head_.compare_exchange_strong(head, head + 1, std::memory_order_acq_rel, std::memory_order_relaxed)) {
+						slt.store(std::forward<Args>(args)...);
+						return true;
+					}
+				}
+				else {
+					if (head == head_.load(std::memory_order_acquire)) {
+						return false;
+					}
+				}
+			}
+		}
+
+		std::optional<value_type> try_pop_front() {
+			while (true) {
+				size_type tail = tail_.load(std::memory_order_acquire);
+				auto& slt = (*buffer_)[tail & mask];
+				if ((Sequence(tail) << 1) + 1 == slt.sequence_.load(std::memory_order_acquire)) {
+					if (tail_.compare_exchange_strong(tail, tail + 1, std::memory_order_acq_rel, std::memory_order_relaxed)) {
+						return slt.load();
+					}
+				}
+				else {
+					if (tail == tail_.load(std::memory_order_acquire)) {
+						return std::nullopt;
+					}
+				}
+			}
+		}
+
+		auto begin() const noexcept /* Unsync */ {
+			return iterator(head_.load(std::memory_order_relaxed), 0, buffer_.data(), capacity());
+		}
+
+		auto end() const noexcept /* Unsync */ {
+			return iterator(tail_.load(std::memory_order_relaxed), 0, buffer_.data(), capacity());
+		}
+
+		bool empty() const noexcept {
+			return head_.load(std::memory_order_relaxed) == tail_.load(std::memory_order_relaxed);
+		}
+
+		size_type size_approx() const noexcept {
+			return tail_.load(std::memory_order_relaxed) - head_.load(std::memory_order_relaxed);
+		}
+
+		constexpr size_type capacity() const noexcept {
+			return N;
+		}
+
+		std::atomic_size_t& head() noexcept {
+			return head_;
+		}
+
+		std::atomic_size_t& tail() noexcept {
+			return tail_;
+		}
+
+	private:
+		size_type Sequence(size_type count) const noexcept {
+			return count / capacity();
+		}
+
+		alignas(align) std::unique_ptr<buffer> buffer_;
+		alignas(align) std::atomic_size_t	   head_ = 0;
+		alignas(align) std::atomic_size_t	   tail_ = 0;
 	};
 }
 

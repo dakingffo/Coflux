@@ -5,7 +5,9 @@
 #ifndef COFLUX_CHANNEL_HPP
 #define COFLUX_CHANNEL_HPP
 
+#include "concurrent/ring.hpp"
 #include "awaiter.hpp"
+#include <iostream>
 
 namespace coflux {
 	namespace detail {
@@ -66,11 +68,12 @@ namespace coflux {
 
 		template <typename Channel>
 		struct channel_writer {
-			using proxy_type  = channel_awaiter_proxy;
-			using value_type  = typename Channel::value_type;
-			using channel_ptr = Channel*;
+			using proxy_type      = channel_awaiter_proxy;
+			using value_type      = typename Channel::value_type;
+			using const_reference = typename Channel::const_reference;
+			using channel_ptr     = Channel*;
 
-			channel_writer(channel_ptr channel, const value_type& value)
+			channel_writer(channel_ptr channel, const_reference value)
 				: success_flag_(false), channel_(channel), value_(value) {}
 			~channel_writer() = default;
 
@@ -78,10 +81,9 @@ namespace coflux {
 				return value_;
 			}
 
-			bool					success_flag_;
-			channel_ptr				channel_;
-			const value_type&		value_;
-			std::coroutine_handle<> handle_;
+			bool			success_flag_;
+			channel_ptr		channel_;
+			const_reference value_;
 		};
 
 		template <typename Channel, executive Executor>
@@ -103,35 +105,47 @@ namespace coflux {
 			channel_write_awaiter& operator=(channel_write_awaiter&&)	   = delete;
 
 			bool await_ready() {
-				return false;
+				if constexpr (Channel::capacity()) {
+					this->success_flag_ = this->channel_->push_writer(this->value_);
+					return true;
+				}
+				else {
+					return false;
+				}
 			}
 
 			void await_suspend(std::coroutine_handle<> handle) {
-				maysuspend_awaiter_base::await_suspend();
-				this->handle_ = handle;
-				this->channel_->push_writer(channel_awaiter_proxy(this));
+				if constexpr (!Channel::capacity()) {
+					maysuspend_awaiter_base::await_suspend();
+					handle_ = handle;
+					this->channel_->push_writer(channel_awaiter_proxy(this));
+				}
 			}
 
 			bool await_resume() noexcept {
-				maysuspend_awaiter_base::await_resume();
+				if constexpr (!Channel::capacity()) {
+					maysuspend_awaiter_base::await_resume();
+				}
 				return this->success_flag_;
 			}
 
 			void resume(bool flag) {
 				this->success_flag_ = flag;
-				executor_traits::execute(executor_, this->handle_);
+				executor_traits::execute(executor_, handle_);
 			}
 
-			executor_pointer executor_;
+			executor_pointer		executor_;
+			std::coroutine_handle<> handle_;
 		};
 
 		template <typename Channel>
 		struct channel_reader {
 			using proxy_type  = channel_awaiter_proxy;
 			using value_type  = typename Channel::value_type;
+			using reference   = typename Channel::reference;
 			using channel_ptr = Channel*;
 
-			channel_reader(channel_ptr channel, value_type& value)
+			channel_reader(channel_ptr channel, reference value)
 				: success_flag_(false), channel_(channel), value_(value) {}
 			~channel_reader() = default;
 
@@ -140,10 +154,9 @@ namespace coflux {
 				value_ = std::forward<Ref>(value);
 			}
 
-			bool					success_flag_;
-			channel_ptr				channel_;
-			value_type&				value_;
-			std::coroutine_handle<> handle_;
+			bool		success_flag_;
+			channel_ptr	channel_;
+			value_type&	value_;
 		};
 
 		template <typename Channel, executive Executor>
@@ -165,26 +178,37 @@ namespace coflux {
 			channel_read_awaiter& operator=(channel_read_awaiter&&)      = delete;
 
 			bool await_ready() {
-				return false;
+				if constexpr (Channel::capacity()) {
+					this->success_flag_ = this->channel_->push_reader(this->value_);
+					return true;
+				}
+				else {
+					return false;
+				}
 			}
 
 			void await_suspend(std::coroutine_handle<> handle) {
-				maysuspend_awaiter_base::await_suspend();
-				this->handle_ = handle;
-				this->channel_->push_reader(channel_awaiter_proxy(this));
+				if constexpr (!Channel::capacity()) {
+					maysuspend_awaiter_base::await_suspend();
+					handle_ = handle;
+					this->channel_->push_reader(channel_awaiter_proxy(this));
+				}
 			}
 
 			bool await_resume() noexcept {
-				maysuspend_awaiter_base::await_resume();
+				if constexpr (!Channel::capacity()) {
+					maysuspend_awaiter_base::await_resume();
+				}
 				return this->success_flag_;
 			}
 
 			void resume(bool flag) {
 				this->success_flag_ = flag;
-				executor_traits::execute(executor_, this->handle_);
+				executor_traits::execute(executor_, handle_);
 			}
 
-			executor_pointer executor_;
+			executor_pointer        executor_;
+			std::coroutine_handle<> handle_;
 		};
 	}
 
@@ -194,10 +218,26 @@ namespace coflux {
 	template <typename Ty, std::size_t N>
 	class channel<Ty[N]> {
 	public:
-		using value_type = Ty;
+		static_assert(std::is_move_constructible_v<Ty>, "MPMC_ring only support the type which is move_constructible.");
+
+		static_assert(  N,			 "N shoud be larger than zero");
+		static_assert(!(N& (N - 1)), "N should be power of 2.");
+
+		using value_type      = Ty;
+		using size_type		  = std::size_t;
+		using reference		  = Ty&;
+		using const_reference = const Ty&;
+
+		using value_queue_type   = MPMC_ring<value_type, N, 64>;
 
 	public:
-		channel() : active_(true) {}
+		static constexpr size_type capacity() noexcept {
+			return N;
+		}
+
+		channel() {
+			launch();
+		}
 		~channel() {
 			close();
 		}
@@ -208,83 +248,59 @@ namespace coflux {
 		channel& operator=(channel&&)      = delete;
 
 		bool active() const noexcept {
-			return active_.load(std::memory_order_acquire);
+			return active_.load(std::memory_order_relaxed);
 		}
 
-		void close() noexcept {
-			bool expect = true;
-			if (active_.compare_exchange_strong(expect, false, std::memory_order_acq_rel)) {
-				Clean();
-			}
-		}
-
-		std::size_t capacity() const noexcept {
-			return capacity_;
-		}
-
-		void throw_if_closed() {
+		void throw_if_closed() const {
 			if (!active_.load(std::memory_order_acquire)) {
 				Channel_closed_error();
 			}
 		}
 
-		std::pair<channel*, const value_type&> operator<<(const value_type& value_) {
+		bool launch() noexcept {
+			bool expected = false;
+			return active_.compare_exchange_strong(expected, true, std::memory_order_seq_cst, std::memory_order_relaxed);
+		}
+
+		bool close() noexcept {
+			bool expected = true;
+			if (active_.compare_exchange_strong(expected, false, std::memory_order_seq_cst, std::memory_order_relaxed)) {
+				Clean();
+				return true;
+			}
+			else {
+				return false;
+			}
+		}
+
+		std::pair<channel*, const_reference> operator<<(const_reference value_) {
 			return { this, value_ };
 		}
 
-		std::pair<channel*, value_type&>       operator>>(value_type& value_) {
+		std::pair<channel*, reference>       operator>>(reference value_) {
 			return { this, value_ };
 		}
 
-		void push_writer(detail::channel_awaiter_proxy writer_proxy) {
-			std::unique_lock<std::mutex> lock(mtx_);
-			throw_if_closed();
-
-			auto& writer = writer_proxy.get_writer<channel>();
-
-			if (!readers_.empty()) {
-				auto reader_proxy = std::move(readers_.front());
-				readers_.pop_front();
-				lock.unlock();
-				reader_proxy.get_reader<channel>().read(writer.what());
-				reader_proxy.resume(true);
-				writer_proxy.resume(true);
-				return;
+		bool push_writer(const_reference value) {
+			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+				return false;
 			}
 
-			if (queue_.size() < capacity()) {
-				queue_.push_back(writer.what());
-				lock.unlock();
-				writer_proxy.resume(true);
-			}
-			else {
-				writers_.emplace_back(std::move(writer_proxy));
-			}
+			return queue_.try_push_back(value);
 		}
 
-		void push_reader(detail::channel_awaiter_proxy reader_proxy) {
-			std::unique_lock<std::mutex> lock(mtx_);
-			throw_if_closed();
+		bool push_reader(reference value) {
+			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+				return false;
+			}
 
-			auto& reader = reader_proxy.get_reader<channel>();
-
-			if (!queue_.empty()) {
-				reader.read(std::move(queue_.front()));
-				queue_.pop_front();
-				detail::channel_awaiter_proxy writer_proxy;
-				if (!writers_.empty()) {
-					writer_proxy = std::move(writers_.front());
-					writers_.pop_front();
-					queue_.push_back(writer_proxy.get_writer<channel>().what());
-				}
-				lock.unlock();
-				if (writer_proxy) {
-					writer_proxy.resume(true);
-				}
-				reader_proxy.resume(true);
+			std::optional<value_type> opt;
+			if (opt = queue_.try_pop_front()) {
+				value = std::move(opt).value();
+				return true;
 			}
 			else {
-				readers_.emplace_back(std::move(reader_proxy));
+				return false;
 			}
 		}
 
@@ -294,59 +310,42 @@ namespace coflux {
 		}
 
 		void Clean() {
-			std::deque<detail::channel_awaiter_proxy> writers_to_resume;
-			std::deque<detail::channel_awaiter_proxy> readers_to_resume;
-			{
-				std::lock_guard<std::mutex> guard(mtx_);
-				writers_to_resume.swap(writers_);
-				readers_to_resume.swap(readers_);
-			}
-			for (auto& writer_proxy : writers_to_resume) {
-				writer_proxy.resume(false);
-			}
-			for (auto& reader_proxy : readers_to_resume) {
-				reader_proxy.resume(false);
-			}
+			queue_.reset();
 		}
 
-		static constexpr std::size_t capacity_ = N;
-
-		std::atomic_bool						  active_;
-		std::deque<Ty>						      queue_;
-		std::deque<detail::channel_awaiter_proxy> writers_;
-		std::deque<detail::channel_awaiter_proxy> readers_;
-		std::mutex								  mtx_;
+		std::atomic_bool   active_;
+		value_queue_type   queue_;
 	};
 
 	template <typename Ty>
 	class channel<Ty[]> {
 	public:
-		using value_type = Ty;
+		using value_type      = Ty;
+		using size_type		  = std::size_t;
+		using reference       = Ty&;
+		using const_reference = const Ty&;
+
+		using awaiter_queue_type = std::deque<detail::channel_awaiter_proxy>;
 
 	public:
-		channel() : active_(true) {}
+		static constexpr size_type capacity() noexcept {
+			return 0;
+		}
+
+		channel() {
+			launch();
+		}
 		~channel() {
 			close();
 		}
 
-		channel(const channel&) = delete;
-		channel(channel&&) = delete;
+		channel(const channel&)            = delete;
+		channel(channel&&)				   = delete;
 		channel& operator=(const channel&) = delete;
-		channel& operator=(channel&&) = delete;
+		channel& operator=(channel&&)      = delete;
 
 		bool active() const noexcept {
 			return active_.load(std::memory_order_acquire);
-		}
-
-		void close() noexcept {
-			bool expect = true;
-			if (active_.compare_exchange_strong(expect, false, std::memory_order_acq_rel)) {
-				Clean();
-			}
-		}
-
-		std::size_t capacity() const noexcept {
-			return capacity_;
 		}
 
 		void throw_if_closed() {
@@ -355,18 +354,37 @@ namespace coflux {
 			}
 		}
 
-		std::pair<channel*, const value_type&> operator<<(const value_type& value_) {
+		bool launch() noexcept {
+			bool expected = false;
+			return active_.compare_exchange_strong(expected, true, std::memory_order_seq_cst, std::memory_order_relaxed);
+		}
+
+		bool close() noexcept {
+			bool expected = true;
+			if (active_.compare_exchange_strong(expected, false, std::memory_order_seq_cst, std::memory_order_relaxed)) {
+				Clean();
+				return true;
+			}
+			else {
+				return false;
+			}
+		}
+
+		std::pair<channel*, const_reference> operator<<(const_reference value_) {
 			return { this, value_ };
 		}
 
-		std::pair<channel*, value_type&>       operator>>(value_type& value_) {
+		std::pair<channel*, reference>       operator>>(reference value_) {
 			return { this, value_ };
 		}
 
 		void push_writer(detail::channel_awaiter_proxy writer_proxy) {
-			std::unique_lock<std::mutex> lock(mtx_);
-			throw_if_closed();
+			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+				writer_proxy.resume(false);
+				return;
+			}
 
+			std::unique_lock<std::mutex> lock(mtx_);
 			if (!readers_.empty()) {
 				auto reader_proxy = std::move(readers_.front());
 				readers_.pop_front();
@@ -381,9 +399,12 @@ namespace coflux {
 		}
 
 		void push_reader(detail::channel_awaiter_proxy reader_proxy) {
-			std::unique_lock<std::mutex> lock(mtx_);
-			throw_if_closed();
+			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+				reader_proxy.resume(false);
+				return;
+			}
 
+			std::unique_lock<std::mutex> lock(mtx_);
 			if (!writers_.empty()) {
 				auto writer_proxy = std::move(writers_.front());
 				writers_.pop_front();
@@ -397,38 +418,14 @@ namespace coflux {
 			}
 		}
 
-		void erase_writer(void* ptr) {
-			if (!active()) {
-				return;
-			}
-
-			std::lock_guard<std::mutex> guard(mtx_);
-			auto it = std::find(writers_.begin(), writers_.end(), ptr);
-			if (it != writers_.end()) {
-				writers_.erase(it);
-			}
-		}
-
-		void erase_reader(void* ptr) {
-			if (!active()) {
-				return;
-			}
-
-			std::lock_guard<std::mutex> guard(mtx_);
-			auto it = std::find(readers_.begin(), readers_.end(), ptr);
-			if (it != readers_.end()) {
-				readers_.erase(it);
-			}
-		}
-
 	private:
 		COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void Channel_closed_error() {
 			throw std::runtime_error("The channel is closed.");
 		}
 
 		void Clean() {
-			std::deque<detail::channel_awaiter_proxy> writers_to_resume;
-			std::deque<detail::channel_awaiter_proxy> readers_to_resume;
+			awaiter_queue_type writers_to_resume;
+			awaiter_queue_type readers_to_resume;
 			{
 				std::lock_guard<std::mutex> guard(mtx_);
 				writers_to_resume.swap(writers_);
@@ -442,12 +439,10 @@ namespace coflux {
 			}
 		}
 
-		static constexpr std::size_t capacity_ = 0;
-
-		std::atomic_bool					      active_;
-		std::deque<detail::channel_awaiter_proxy> writers_;
-		std::deque<detail::channel_awaiter_proxy> readers_;
-		std::mutex							      mtx_;
+		std::atomic_bool   active_;
+		awaiter_queue_type writers_;
+		awaiter_queue_type readers_;
+		std::mutex		   mtx_;
 	};
 }
 
