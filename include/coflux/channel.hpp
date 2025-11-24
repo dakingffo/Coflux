@@ -13,8 +13,12 @@ namespace coflux {
 	namespace detail {
 		template <typename Channel>
 		struct channel_reader;
+		template <typename Channel, executive Executor>
+		struct channel_read_awaiter;
 		template <typename Channel>
 		struct channel_writer;
+		template <typename Channel, executive Executor>
+		struct channel_write_awaiter;
 
 		struct channel_awaiter_proxy {
 			channel_awaiter_proxy() : awaiter_ptr_(nullptr), resume_func_(nullptr) {}
@@ -255,10 +259,10 @@ namespace coflux {
 		}
 
 		channel() {
-			launch();
+			Launch();
 		}
 		~channel() {
-			close();
+			Close();
 		}
 
 		channel(const channel&)			   = delete;
@@ -276,22 +280,6 @@ namespace coflux {
 			}
 		}
 
-		bool launch() noexcept {
-			bool expected = false;
-			return active_.compare_exchange_strong(expected, true, std::memory_order_seq_cst, std::memory_order_relaxed);
-		}
-
-		bool close() noexcept {
-			bool expected = true;
-			if (active_.compare_exchange_strong(expected, false, std::memory_order_seq_cst, std::memory_order_relaxed)) {
-				Clean();
-				return true;
-			}
-			else {
-				return false;
-			}
-		}
-
 		detail::channel_writer<channel> operator<<(const_reference value_) {
 			return { this, value_ };
 		}
@@ -301,8 +289,26 @@ namespace coflux {
 		}
 
 	private:
-		friend detail::channel_write_awaiter;
-		friend detail::channel_read_awaiter;
+		template <typename Channel, executive Executor>
+		friend class detail::channel_write_awaiter;
+		template <typename Channel, executive Executor>
+		friend class detail::channel_read_awaiter;
+
+		bool Launch() noexcept {
+			bool expected = false;
+			return active_.compare_exchange_strong(expected, true, std::memory_order_seq_cst, std::memory_order_relaxed);
+		}
+
+		bool Close() noexcept {
+			bool expected = true;
+			if (active_.compare_exchange_strong(expected, false, std::memory_order_seq_cst, std::memory_order_relaxed)) {
+				Clean();
+				return true;
+			}
+			else {
+				return false;
+			}
+		}
 
 		bool Push_writer(const_reference value) {
 			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
@@ -401,8 +407,10 @@ namespace coflux {
 		}
 
 	private:
-		friend detail::channel_write_awaiter;
-		friend detail::channel_read_awaiter;
+	    template <typename Channel, executive Executor>
+		friend class detail::channel_write_awaiter;
+		template <typename Channel, executive Executor>
+		friend class detail::channel_read_awaiter;
 
 		void Push_writer(detail::channel_awaiter_proxy writer_proxy) {
 			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {

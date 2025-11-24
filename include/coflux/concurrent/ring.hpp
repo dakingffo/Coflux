@@ -177,9 +177,9 @@ namespace coflux {
 		/*
 		*			SPMC <- head(front)-------------tail(back) <-> SPSC
 		*/
-		static_assert(std::is_assignable_v<Ty, nullptr_t>, "ChaseLev_ring only support the type which is assignable from nullptr.");
-		static_assert(std::is_default_constructible_v<Ty>, "ChaseLev_ring only support the type which is default_constructible.");
-		static_assert(std::is_move_constructible_v<Ty>,    "ChaseLev_ring only support the type which is move_constructible.");
+		static_assert(std::is_assignable_v<Ty, std::nullptr_t>, "ChaseLev_ring only support the type which is assignable from nullptr.");
+		static_assert(std::is_default_constructible_v<Ty>,      "ChaseLev_ring only support the type which is default_constructible.");
+		static_assert(std::is_move_constructible_v<Ty>,         "ChaseLev_ring only support the type which is move_constructible.");
 
 		static_assert(  N,			 "N shoud be larger than zero");
 		static_assert(!(N& (N - 1)), "N should be power of 2.");
@@ -259,7 +259,7 @@ namespace coflux {
 			std::int64_t t = tail_.load(std::memory_order_relaxed);
 			std::int64_t h = head_.load(std::memory_order_acquire);
 
-			if (capacity <= t - h) {
+			if (capacity() <= t - h) {
 				// may be false positive
 				return false;
 			}

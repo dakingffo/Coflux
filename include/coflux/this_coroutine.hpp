@@ -111,8 +111,8 @@ namespace coflux {
                 suspend_base::set_executor_ptr(&sch.template get<Executor>());
                 coflux::executor_traits<timer_executor>::execute(
                     &sch.template get<timer_executor>(),
-                    [this, handle]() mutable { 
-                        suspend_base::execute(handle);
+                    [this, handle, target_exec = sch.template get<Executor>()]() mutable { 
+                        suspend_base::execute(&target_exec, handle);
                     },
                     timer_
                 );
@@ -127,6 +127,14 @@ namespace coflux {
 
         template <bool Ownership, typename Rep, typename Period>
         struct sleep_t : public ownership_tag<Ownership> {
+            sleep_t(const std::chrono::duration<Rep, Period>& dur) : dur_(dur) {}
+            ~sleep_t() = default;
+            
+            sleep_t(const sleep_t&)            = delete;
+            sleep_t(sleep_t&&)                 = default;
+            sleep_t& operator=(const sleep_t&) = delete;
+            sleep_t& operator=(sleep_t&&)      = default;
+
             std::chrono::duration<Rep, Period> dur_;
         };
 
@@ -439,7 +447,7 @@ namespace coflux {
         // execute operations
         template <executive Executor>
         inline auto dispatch(Executor* exec) noexcept {
-            return detail::dispatch_awaiter<false, Executor, std::suspend_never>{ exec };
+            return detail::dispatch_awaiter<false, Executor>{ exec };
         }
 
         template <typename Rep, typename Period>

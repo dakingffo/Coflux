@@ -44,8 +44,12 @@ namespace coflux {
                 executor_traits::execute(executor_, handle);
             }
 
-            executor_pointer        executor_      = nullptr;
-            std::atomic<status>*    waiter_status_ = nullptr;
+            void execute(executor_pointer exec, std::coroutine_handle<> handle) {
+                executor_traits::execute(exec, handle);
+            }
+
+            executor_pointer     executor_      = nullptr;
+            std::atomic<status>* waiter_status_ = nullptr;
         };
 
         struct final_awaiter {
