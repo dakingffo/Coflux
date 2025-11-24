@@ -67,7 +67,7 @@ namespace coflux {
 		};
 
 		template <typename Channel>
-		struct channel_writer {
+		struct channel_writer : public awaitable_closure<channel_writer<Channel>> {
 			using proxy_type      = channel_awaiter_proxy;
 			using value_type      = typename Channel::value_type;
 			using const_reference = typename Channel::const_reference;
@@ -77,8 +77,18 @@ namespace coflux {
 				: success_flag_(false), channel_(channel), value_(value) {}
 			~channel_writer() = default;
 
+			channel_writer(const channel_writer&)			 = delete;
+			channel_writer(channel_writer&&)				 = default;
+			channel_writer& operator=(const channel_writer&) = delete;
+			channel_writer& operator=(channel_writer&&)      = default;
+
 			const value_type& what() const noexcept {
 				return value_;
+			}
+
+			template <executive Executor>
+			auto transform(Executor* exec, std::atomic<status>* st) && noexcept {
+				return channel_write_awaiter<Channel, Executor>(std::move(*this), exec, st);
 			}
 
 			bool			success_flag_;
@@ -88,25 +98,25 @@ namespace coflux {
 
 		template <typename Channel, executive Executor>
 		struct channel_write_awaiter : public channel_writer<Channel>, public maysuspend_awaiter_base {
-			using base			   = channel_writer<Channel>;
-			using value_type       = typename base::value_type;
-			using channel_ptr	   = typename base::channel_ptr;
+			using closure_base	   = channel_writer<Channel>;
+			using value_type       = typename closure_base::value_type;
+			using channel_ptr	   = typename closure_base::channel_ptr;
 			using executor_traits  = ::coflux::executor_traits<Executor>;
 			using executor_type    = typename executor_traits::executor_type;
 			using executor_pointer = typename executor_traits::executor_pointer;
 
-			channel_write_awaiter(channel_ptr channel, const value_type& value, executor_pointer exec, std::atomic<status>* p)
-				: base(channel, value), executor_(exec), maysuspend_awaiter_base{ p } {}
+			channel_write_awaiter(closure_base&& writer, executor_pointer exec, std::atomic<status>* st)
+				: closure_base(std::move(writer)), maysuspend_awaiter_base(st), executor_(exec) {}
 			~channel_write_awaiter() = default;
 
 			channel_write_awaiter(const channel_write_awaiter&)			   = delete;
-			channel_write_awaiter(channel_write_awaiter&&)			       = delete;
+			channel_write_awaiter(channel_write_awaiter&&)			       = default;
 			channel_write_awaiter& operator=(const channel_write_awaiter&) = delete;
-			channel_write_awaiter& operator=(channel_write_awaiter&&)	   = delete;
+			channel_write_awaiter& operator=(channel_write_awaiter&&)	   = default;
 
 			bool await_ready() {
 				if constexpr (Channel::capacity()) {
-					this->success_flag_ = this->channel_->push_writer(this->value_);
+					this->success_flag_ = this->channel_->Push_writer(this->value_);
 					return true;
 				}
 				else {
@@ -118,7 +128,7 @@ namespace coflux {
 				if constexpr (!Channel::capacity()) {
 					maysuspend_awaiter_base::await_suspend();
 					handle_ = handle;
-					this->channel_->push_writer(channel_awaiter_proxy(this));
+					this->channel_->Push_writer(channel_awaiter_proxy(this));
 				}
 			}
 
@@ -139,7 +149,7 @@ namespace coflux {
 		};
 
 		template <typename Channel>
-		struct channel_reader {
+		struct channel_reader : public awaitable_closure<channel_reader<Channel>> {
 			using proxy_type  = channel_awaiter_proxy;
 			using value_type  = typename Channel::value_type;
 			using reference   = typename Channel::reference;
@@ -149,9 +159,19 @@ namespace coflux {
 				: success_flag_(false), channel_(channel), value_(value) {}
 			~channel_reader() = default;
 
+			channel_reader(const channel_reader&)		     = delete;
+			channel_reader(channel_reader&&)				 = default;
+			channel_reader& operator=(const channel_reader&) = delete;
+			channel_reader& operator=(channel_reader&&)      = default;
+
 			template <typename Ref>
 			void read(Ref&& value) {
 				value_ = std::forward<Ref>(value);
+			}
+
+			template <executive Executor>
+			auto transform(Executor* exec, std::atomic<status>* st) && noexcept {
+				return channel_read_awaiter<Channel, Executor>(std::move(*this), exec, st);
 			}
 
 			bool		success_flag_;
@@ -161,25 +181,25 @@ namespace coflux {
 
 		template <typename Channel, executive Executor>
 		struct channel_read_awaiter : public channel_reader<Channel>, public maysuspend_awaiter_base {
-			using base			   = channel_reader<Channel>;
-			using value_type       = typename base::value_type;
-			using channel_ptr      = typename base::channel_ptr;
+			using closure_base     = channel_reader<Channel>;
+			using value_type       = typename closure_base::value_type;
+			using channel_ptr      = typename closure_base::channel_ptr;
 			using executor_traits  = ::coflux::executor_traits<Executor>;
 			using executor_type    = typename executor_traits::executor_type;
 			using executor_pointer = typename executor_traits::executor_pointer;
 
-			channel_read_awaiter(channel_ptr channel, value_type& value, executor_pointer exec, std::atomic<status>* p)
-				: base(channel, value), executor_(exec), maysuspend_awaiter_base{ p } {}
+			channel_read_awaiter(closure_base&& reader, executor_pointer exec, std::atomic<status>* st)
+				: closure_base(std::move(reader)), maysuspend_awaiter_base(st), executor_(exec)  {}
 			~channel_read_awaiter() = default;
 
 			channel_read_awaiter(const channel_read_awaiter&)		     = delete;
-			channel_read_awaiter(channel_read_awaiter&&)				 = delete;
+			channel_read_awaiter(channel_read_awaiter&&)				 = default;
 			channel_read_awaiter& operator=(const channel_read_awaiter&) = delete;
-			channel_read_awaiter& operator=(channel_read_awaiter&&)      = delete;
+			channel_read_awaiter& operator=(channel_read_awaiter&&)      = default;
 
 			bool await_ready() {
 				if constexpr (Channel::capacity()) {
-					this->success_flag_ = this->channel_->push_reader(this->value_);
+					this->success_flag_ = this->channel_->Push_reader(this->value_);
 					return true;
 				}
 				else {
@@ -191,7 +211,7 @@ namespace coflux {
 				if constexpr (!Channel::capacity()) {
 					maysuspend_awaiter_base::await_suspend();
 					handle_ = handle;
-					this->channel_->push_reader(channel_awaiter_proxy(this));
+					this->channel_->Push_reader(channel_awaiter_proxy(this));
 				}
 			}
 
@@ -210,6 +230,7 @@ namespace coflux {
 			executor_pointer        executor_;
 			std::coroutine_handle<> handle_;
 		};
+
 	}
 
 	template <typename TyN>
@@ -273,15 +294,19 @@ namespace coflux {
 			}
 		}
 
-		std::pair<channel*, const_reference> operator<<(const_reference value_) {
+		detail::channel_writer<channel> operator<<(const_reference value_) {
 			return { this, value_ };
 		}
 
-		std::pair<channel*, reference>       operator>>(reference value_) {
+		detail::channel_reader<channel> operator>>(reference value_) {
 			return { this, value_ };
 		}
 
-		bool push_writer(const_reference value) {
+	private:
+		friend detail::channel_write_awaiter;
+		friend detail::channel_read_awaiter;
+
+		bool Push_writer(const_reference value) {
 			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				return false;
 			}
@@ -289,7 +314,7 @@ namespace coflux {
 			return queue_.try_push_back(value);
 		}
 
-		bool push_reader(reference value) {
+		bool Push_reader(reference value) {
 			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				return false;
 			}
@@ -304,13 +329,12 @@ namespace coflux {
 			}
 		}
 
-	private:
-		COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void Channel_closed_error() {
-			throw std::runtime_error("The channel is closed.");
-		}
-
 		void Clean() {
 			queue_.reset();
+		}
+
+		COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void Channel_closed_error() {
+			throw std::runtime_error("The channel is closed.");
 		}
 
 		std::atomic_bool   active_;
@@ -370,15 +394,19 @@ namespace coflux {
 			}
 		}
 
-		std::pair<channel*, const_reference> operator<<(const_reference value_) {
+		detail::channel_writer<channel> operator<<(const_reference value_) {
 			return { this, value_ };
 		}
 
-		std::pair<channel*, reference>       operator>>(reference value_) {
+		detail::channel_reader<channel> operator>>(reference value_) {
 			return { this, value_ };
 		}
 
-		void push_writer(detail::channel_awaiter_proxy writer_proxy) {
+	private:
+		friend detail::channel_write_awaiter;
+		friend detail::channel_read_awaiter;
+
+		void Push_writer(detail::channel_awaiter_proxy writer_proxy) {
 			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				writer_proxy.resume(false);
 				return;
@@ -398,7 +426,7 @@ namespace coflux {
 			}
 		}
 
-		void push_reader(detail::channel_awaiter_proxy reader_proxy) {
+		void Push_reader(detail::channel_awaiter_proxy reader_proxy) {
 			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				reader_proxy.resume(false);
 				return;
@@ -418,11 +446,6 @@ namespace coflux {
 			}
 		}
 
-	private:
-		COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void Channel_closed_error() {
-			throw std::runtime_error("The channel is closed.");
-		}
-
 		void Clean() {
 			awaiter_queue_type writers_to_resume;
 			awaiter_queue_type readers_to_resume;
@@ -437,6 +460,10 @@ namespace coflux {
 			for (auto& reader_proxy : readers_to_resume) {
 				reader_proxy.resume(false);
 			}
+		}
+
+		COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void Channel_closed_error() {
+			throw std::runtime_error("The channel is closed.");
 		}
 
 		std::atomic_bool   active_;

@@ -615,54 +615,17 @@ namespace coflux {
 
 		template <task_rvalue Task>
 		auto await_transform(Task&& co_task) noexcept {
-			return awaiter<Task, executor_type>(std::move(co_task), executor_, &(this->get_status()));
+			return detail::awaiter<Task, executor_type>(std::move(co_task), executor_, &(this->get_status()));
 		}
 
 		template <fork_lrvalue Fork>
 		auto await_transform(Fork&& co_fork) noexcept {
-			return awaiter<Fork, executor_type>(std::forward<Fork>(co_fork), executor_, &(this->get_status()));
+			return detail::awaiter<Fork, executor_type>(std::forward<Fork>(co_fork), executor_, &(this->get_status()));
 		}
 
-		template <task_like ...TaskLikes>
-		auto await_transform(detail::when_any_pair<TaskLikes...>&& when_any) noexcept {
-			return awaiter<detail::when_any_pair<TaskLikes...>, executor_type>(
-				std::move(when_any.second), executor_, &(this->get_status()));
-		}
-
-		template <task_like ...TaskLikes>
-		auto await_transform(detail::when_all_pair<TaskLikes...>&& when_all) noexcept {
-			return awaiter<detail::when_all_pair<TaskLikes...>, executor_type>(
-				std::move(when_all.second), executor_, &(this->get_status()));
-		}
-
-		template <task_like_range Range>
-		auto await_transform(detail::when_n_pair<Range>&& when_n) noexcept {
-			return awaiter<detail::when_n_pair<Range>, executor_type>(when_n.first.n_,
-				std::forward<Range>(when_n.second), executor_, &(this->get_status()));
-		}
-
-		template <typename T, std::size_t N>
-		auto await_transform(std::pair<channel<T[N]>*, const T&>&& write_pair) noexcept {
-			return detail::channel_write_awaiter<channel<T[N]>, executor_type>(
-				write_pair.first, write_pair.second, executor_, &(this->get_status()));
-		}
-
-		template <typename T, std::size_t N>
-		auto await_transform(std::pair<channel<T[N]>*, T&>&& read_pair) noexcept {
-			return detail::channel_read_awaiter<channel<T[N]>, executor_type>(
-				read_pair.first, read_pair.second, executor_, &(this->get_status()));
-		}
-
-		template <typename T>
-		auto await_transform(std::pair<channel<T[]>*, const T&>&& write_pair) noexcept {
-			return detail::channel_write_awaiter<channel<T[]>, executor_type>(
-				write_pair.first, write_pair.second, executor_, &(this->get_status()));
-		}
-
-		template <typename T>
-		auto await_transform(std::pair<channel<T[]>*, T&>&& read_pair) noexcept {
-			return detail::channel_read_awaiter<channel<T[]>, executor_type>(
-				read_pair.first, read_pair.second, executor_, &(this->get_status()));
+		template <typename C>
+		auto await_transform(detail::awaitable_closure<C>&& closure) {
+			return std::move(closure).transform(executor_, &(this->get_status()));
 		}
 
 		std::pmr::memory_resource* memo_;

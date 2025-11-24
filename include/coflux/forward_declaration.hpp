@@ -373,17 +373,6 @@ namespace coflux {
 	template <typename TaskRange>
 	concept task_like_range = fork_lrvalue_range<TaskRange> || task_rvalue_range<TaskRange>;
 
-	namespace detail {
-		template <task_like... TaskLikes>
-		using when_any_pair = std::pair<when_any_tag, std::tuple<TaskLikes...>>;
-
-		template <task_like... TaskLikes>
-		using when_all_pair = std::pair<when_all_tag, std::tuple<TaskLikes...>>;
-
-		template <task_like_range Range>
-		using when_n_pair = std::pair<when_n_tag, Range>;
-	}
-
 #undef COFLUX_EXECUTABLE_CONCEPTS
 
 	namespace detail {

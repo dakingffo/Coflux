@@ -53,6 +53,7 @@ static void BM_Channel_Buffered_SPSC(benchmark::State& state) {
 BENCHMARK(BM_Channel_Buffered_SPSC)
     ->Arg(10000)
     ->Arg(100000)
+    ->Arg(1000000)
     ->UseRealTime();
 
 // MPMC : N Producers, N Consumers
@@ -96,7 +97,8 @@ static void BM_Channel_Buffered_MPMC(benchmark::State& state) {
                     }
                     }(ctx, chan, items_per_thread));
             }
-            for (auto& f : forks) co_await f;
+            
+            co_await coflux::when(forks);
 
             state.PauseTiming();
             }(env, state, chan, total_items);
@@ -109,6 +111,7 @@ static void BM_Channel_Buffered_MPMC(benchmark::State& state) {
 BENCHMARK(BM_Channel_Buffered_MPMC)
     ->Arg(10000)
     ->Arg(100000)
+    ->Arg(1000000)
     ->UseRealTime();
 
 
@@ -152,4 +155,5 @@ static void BM_Channel_Unbuffered_PingPong(benchmark::State& state) {
 BENCHMARK(BM_Channel_Unbuffered_PingPong)
     ->Arg(10000)
     ->Arg(100000)
+    ->Arg(1000000)
     ->UseRealTime();

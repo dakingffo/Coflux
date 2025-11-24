@@ -55,7 +55,7 @@ namespace coflux {
 		}
 
 		template <typename...Args>
-		void spin_until_stroe(size_type expected_sequence, Args&&...args) {
+		void spin_until_store(size_type expected_sequence, Args&&...args) {
 			while (sequence_.load(std::memory_order_acquire) != expected_sequence) {
 				std::this_thread::yield();
 			}

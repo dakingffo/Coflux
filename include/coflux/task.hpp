@@ -256,7 +256,7 @@ namespace coflux {
 			template <typename TaskType>
 			friend struct promise;
 			template <typename T, executive E>
-			friend struct ::coflux::awaiter;
+			friend struct detail::awaiter;
 
 			void Nothrow_join() {
 				handle_.promise().final_latch_wait();
