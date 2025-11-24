@@ -107,9 +107,13 @@ namespace coflux {
 	};
 
 	namespace detail {
-		struct nonsuspend_awaiter_base;
+		struct suspend_limited_tag {};
 
-		struct maysuspend_awaiter_base;
+		template <bool Suspend>
+		struct suspend_tag : public std::bool_constant<Suspend>, public suspend_limited_tag {};
+
+		template <typename Impl>
+		struct awaitable_closure;
 
 		struct final_awaiter;
 	}
@@ -210,16 +214,11 @@ namespace coflux {
 			bool Ownership>
 		class basic_task;
 
-		struct when_any_tag {};
-
-		struct when_all_tag {};
-
-		struct when_n_tag { std::size_t n_; };
-
-		struct limited_tag {};
+		struct ownership_limited_tag {};
+		struct ownership_unlimited_tag {};
 
 		template <bool Ownership>
-		struct ownership_tag : std::conditional_t<Ownership, std::true_type, std::false_type>, limited_tag {};
+		struct ownership_tag : std::bool_constant<Ownership>, ownership_limited_tag {};
 	}
 
 	template <typename Ty>
@@ -279,7 +278,6 @@ namespace coflux {
 
 	template <typename TaskLike>
 	concept task_like = fork_lrvalue<TaskLike> || task_rvalue<TaskLike>;
-
 
 
 	template <typename TaskRange>

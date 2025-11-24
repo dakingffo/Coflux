@@ -563,11 +563,11 @@ namespace coflux {
 			return task_type(std::coroutine_handle<promise>::from_promise(*this));
 		}
 
-		auto await_transform(detail::get_scheduler_t) noexcept {
+		auto await_transform(detail::get_scheduler_t get_scheduler_request) noexcept {
 			return detail::get_scheduler_awaiter<scheduler_type>{};
 		}
 
-		auto await_transform(detail::context_t) noexcept {
+		auto await_transform(detail::context_t context_request) noexcept {
 			return detail::context_awaiter<Ownership>{this, memo_, scheduler<void>(scheduler_)};
 		}
 
@@ -586,28 +586,29 @@ namespace coflux {
 			return initial_suspend();
 		}
 
-		auto await_transform(detail::cancel_awaiter<Ownership>&& awaiter) noexcept {
+		auto await_transform(detail::cancel_t<Ownership> cancel_request) noexcept {
 			result_base::cancel();
 			return detail::final_awaiter{};
 		}
 
 		template <awaitable Awaiter>
-			requires (!std::is_base_of_v<detail::limited_tag, std::remove_reference_t<Awaiter>>)
 		decltype(auto) await_transform(Awaiter&& awaiter) noexcept {
 			this->get_status() = suspending;
 			return std::forward<Awaiter>(awaiter);
 		}
 
 		template <awaitable Awaiter>
-			requires std::is_base_of_v<detail::nonsuspend_awaiter_base, std::remove_reference_t<Awaiter>>
-		&& std::is_base_of_v<detail::ownership_tag<Ownership>, std::remove_reference_t<Awaiter>>
+			requires std::is_base_of_v<detail::suspend_tag<false>, std::remove_reference_t<Awaiter>>
+		    && ((std::is_base_of_v<detail::ownership_tag<Ownership>, std::remove_reference_t<Awaiter>>)
+			|| (std::is_base_of_v<detail::ownership_unlimited_tag, std::remove_reference_t<Awaiter>>))
 			decltype(auto) await_transform(Awaiter&& awaiter) noexcept {
 			return std::forward<Awaiter>(awaiter);
 		}
 
 		template <awaitable Awaiter>
-			requires std::is_base_of_v<detail::maysuspend_awaiter_base, std::remove_reference_t<Awaiter>>
-		&& std::is_base_of_v<detail::ownership_tag<Ownership>, std::remove_reference_t<Awaiter>>
+			requires std::is_base_of_v<detail::suspend_tag<true>, std::remove_reference_t<Awaiter>>
+		    && ((std::is_base_of_v<detail::ownership_tag<Ownership>, std::remove_reference_t<Awaiter>>) 
+			|| (std::is_base_of_v<detail::ownership_unlimited_tag, std::remove_reference_t<Awaiter>>))
 			decltype(auto) await_transform(Awaiter&& awaiter) noexcept {
 			awaiter.set_waiter_status_ptr(&(this->get_status()));
 			return std::forward<Awaiter>(awaiter);

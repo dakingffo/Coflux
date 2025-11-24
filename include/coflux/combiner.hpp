@@ -40,24 +40,22 @@ namespace coflux {
 
         template <task_like...TaskLikes, executive Executor>
         struct awaiter<when_any_closure<TaskLikes...>, Executor>
-            : public when_any_closure<TaskLikes...>, public maysuspend_awaiter_base {
+            : public when_any_closure<TaskLikes...>, public maysuspend_awaiter_base<Executor> {
         public:
             using closure_base     = when_any_closure<TaskLikes...>;
+            using suspend_base     = maysuspend_awaiter_base<Executor>;
             using task_type        = typename closure_base::task_type;
             using result_type      = std::variant<typename std::remove_reference_t<TaskLikes>::result_type...>;
             using result_proxy     = std::shared_ptr<std::pair<std::atomic_size_t, result_type>>;
-            using executor_traits  = coflux::executor_traits<Executor>;
-            using executor_type    = typename executor_traits::executor_type;
-            using executor_pointer = typename executor_traits::executor_pointer;
+            using executor_pointer = typename suspend_base::executor_pointer;
 
             using cancellaton_callback_type = std::optional<std::stop_callback<std::function<void()>>>;
 
         public:
             explicit awaiter(closure_base&& closure, executor_pointer exec, std::atomic<status>* st)
                 : closure_base(std::move(closure))
-                , maysuspend_awaiter_base(st)
-                , result_(std::make_shared<std::pair<std::atomic_size_t, result_type>>(-1, result_type{}))
-                , executor_(exec) {}
+                , suspend_base(exec, st)
+                , result_(std::make_shared<std::pair<std::atomic_size_t, result_type>>(-1, result_type{})) {}
             ~awaiter() {};
 
             awaiter(const awaiter&) = delete;
@@ -71,11 +69,10 @@ namespace coflux {
 
             template <typename Promise>
             bool await_suspend(std::coroutine_handle<Promise> handle) {
+                suspend_base::await_suspend();
                 continuation_.store(handle);
-                maysuspend_awaiter_base::await_suspend();
-
-                auto callback = [
-                    handle, result = result_, exec = executor_,
+                auto callback = [this,
+                    handle, result = result_, exec = this->executor_,
                     &error = error_, &stop = stop_source_,
                     &continuation = continuation_, &already_suspend = already_suspend_
                 ] <std::size_t I>(auto& basic_task_result) {
@@ -104,13 +101,13 @@ namespace coflux {
                             while (!already_suspend) {
                                 std::this_thread::yield();
                             }
-                            executor_traits::execute(exec, handle_to_resume);
+                            suspend_base::execute(handle_to_resume);
                         }
                     }
                 };
 
-                auto void_callback = [
-                    handle, result = result_, exec = executor_,
+                auto void_callback = [this,
+                    handle, result = result_, exec = this->executor_,
                     &error = error_, &stop = stop_source_,
                     &continuation = continuation_, &already_suspend = already_suspend_
                 ] <std::size_t I>(auto& basic_task_result) {
@@ -135,7 +132,7 @@ namespace coflux {
                             while (!already_suspend) {
                                 std::this_thread::yield();
                             }
-                            executor_traits::execute(exec, handle_to_resume);
+                            suspend_base::execute(handle_to_resume);
                         }
                     }
                 };
@@ -178,8 +175,8 @@ namespace coflux {
             }
 
             decltype(auto) await_resume() {
+                suspend_base::await_resume();
                 std::atomic_thread_fence(std::memory_order_seq_cst);
-                maysuspend_awaiter_base::await_resume();
                 if (error_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     std::rethrow_exception(error_);
                 }
@@ -191,7 +188,6 @@ namespace coflux {
             std::atomic_bool                     already_suspend_ = false;
             result_proxy                         result_;
             std::exception_ptr                   error_ = nullptr;
-            executor_pointer                     executor_;
             std::atomic<std::coroutine_handle<>> continuation_;
             std::stop_source                     stop_source_;
             cancellaton_callback_type            cancellation_callback_;
@@ -229,24 +225,22 @@ namespace coflux {
 
         template <task_like...TaskLikes, executive Executor>
         struct awaiter<when_all_closure<TaskLikes...>, Executor> :
-            public when_all_closure<TaskLikes...>, public maysuspend_awaiter_base {
+            public when_all_closure<TaskLikes...>, public maysuspend_awaiter_base<Executor> {
         public:
             using closure_base     = when_all_closure<TaskLikes...>;
+            using suspend_base     = maysuspend_awaiter_base<Executor>;
             using task_type        = typename closure_base::task_type;
             using result_type      = std::tuple<std::optional<typename std::remove_reference_t<TaskLikes>::result_type>...>;
             using result_proxy     = std::shared_ptr<std::pair<std::atomic_size_t, result_type>>;
-            using executor_traits  = ::coflux::executor_traits<Executor>;
-            using executor_type    = typename executor_traits::executor_type;
-            using executor_pointer = typename executor_traits::executor_pointer;
+            using executor_pointer = typename suspend_base::executor_pointer;
 
             using cancellaton_callback_type = std::optional<std::stop_callback<std::function<void()>>>;
 
         public:
             explicit awaiter(closure_base&& closure, executor_pointer exec, std::atomic<status>* st)
                 : closure_base(std::move(closure))
-                , maysuspend_awaiter_base(st)
-                , result_(std::make_shared<std::pair<std::atomic_size_t, result_type>>(N, result_type{}))
-                , executor_(exec){}
+                , suspend_base(exec, st)
+                , result_(std::make_shared<std::pair<std::atomic_size_t, result_type>>(N, result_type{})) {}
             ~awaiter() {};
 
             awaiter(const awaiter&) = delete;
@@ -260,11 +254,11 @@ namespace coflux {
 
             template <typename Promise>
             bool await_suspend(std::coroutine_handle<Promise> handle) {
+                suspend_base::await_suspend();
                 continuation_.store(handle);
-                maysuspend_awaiter_base::await_suspend();
 
-                auto callback = [
-                    handle, result = result_, exec = executor_,
+                auto callback = [this,
+                    handle, result = result_, exec = this->executor_,
                     &error = error_, &stop = stop_source_,
                     &continuation = continuation_, &mtx = mtx_
                 ] <std::size_t I>(auto& basic_task_result) {
@@ -292,13 +286,13 @@ namespace coflux {
                     if (result->first.fetch_sub(1, std::memory_order_acq_rel) == 1) {
                         std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
                         if (handle_to_resume) {
-                            executor_traits::execute(exec, handle_to_resume);
+                            suspend_base::execute(handle_to_resume);
                         }
                     }
                 };
 
-                auto void_callback = [
-                    handle, result = result_, exec = executor_,
+                auto void_callback = [this,
+                    handle, result = result_, exec = this->executor_,
                     &error = error_, &stop = stop_source_,
                     &continuation = continuation_, &mtx = mtx_
                 ] <std::size_t I>(auto& basic_task_result) {
@@ -322,7 +316,7 @@ namespace coflux {
                     if (result->first.fetch_sub(1, std::memory_order_acq_rel) == 1) {
                         std::coroutine_handle<> handle_to_resume = continuation.exchange(nullptr);
                         if (handle_to_resume) {
-                            executor_traits::execute(exec, handle_to_resume);
+                            suspend_base::execute(handle_to_resume);
                         }
                     }
                 };
@@ -363,8 +357,8 @@ namespace coflux {
             }
 
             decltype(auto) await_resume() {
+                suspend_base::await_resume();
                 std::atomic_thread_fence(std::memory_order_seq_cst);
-                maysuspend_awaiter_base::await_resume();
                 if (error_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     std::rethrow_exception(error_);
                 }
@@ -377,7 +371,6 @@ namespace coflux {
 
             result_proxy                         result_;
             std::exception_ptr                   error_ = nullptr;
-            executor_pointer                     executor_;
             std::atomic<std::coroutine_handle<>> continuation_;
             std::stop_source                     stop_source_;
             cancellaton_callback_type            cancellation_callback_;
@@ -434,25 +427,24 @@ namespace coflux {
         };
 
         template <task_like_range Range, executive Executor>
-        struct awaiter<when_n_closure<Range>, Executor> : public when_n_closure<Range>, public maysuspend_awaiter_base {
+        struct awaiter<when_n_closure<Range>, Executor> 
+            : public when_n_closure<Range>, public maysuspend_awaiter_base<Executor> {
         public:
             using closure_base     = when_n_closure<Range>;
+            using suspend_base     = maysuspend_awaiter_base<Executor>;
             using task_type        = typename closure_base::task_type;
             using value_type       = typename std::remove_cvref_t<decltype(*std::declval<Range>().begin())>::value_type;
             using result_type      = std::conditional_t<std::is_object_v<value_type>, std::vector<value_type>, std::monostate>;
             using result_proxy     = std::shared_ptr<std::pair<std::atomic_size_t, result_type>>;
-            using executor_traits  = ::coflux::executor_traits<Executor>;
-            using executor_type    = typename executor_traits::executor_type;
-            using executor_pointer = typename executor_traits::executor_pointer;
+            using executor_pointer = typename suspend_base::executor_pointer;
 
             using cancellaton_callback_type = std::optional<std::stop_callback<std::function<void()>>>;
 
         public:
             explicit awaiter(closure_base&& closure, executor_pointer exec, std::atomic<status>* st)
                 : closure_base(std::move(closure))
-                , maysuspend_awaiter_base(st)
-                , result_(std::make_shared<std::pair<std::atomic_size_t, result_type>>(0, result_type{}))
-                , executor_(exec) {}
+                , suspend_base(exec, st)
+                , result_(std::make_shared<std::pair<std::atomic_size_t, result_type>>(0, result_type{})) {}
             ~awaiter() = default;
 
             awaiter(const awaiter&)            = delete;
@@ -466,12 +458,12 @@ namespace coflux {
 
             template <typename Promise>
             bool await_suspend(std::coroutine_handle<Promise> handle) {
+                suspend_base::await_suspend();
                 this->n_ = std::min(this->n_, (std::size_t)std::ranges::distance(this->basic_tasks_));
                 continuation_.store(handle);
-                maysuspend_awaiter_base::await_suspend();
 
-                auto callback = [
-                    handle, n = this->n_, result = result_, exec = executor_,
+                auto callback = [this,
+                    handle, n = this->n_, result = result_, exec = this->executor_,
                     &error = error_, &stop = stop_source_,
                     &continuation = continuation_, &already_suspend = already_suspend_, &mtx = mtx_
                 ] (auto& basic_task_result) {
@@ -515,14 +507,14 @@ namespace coflux {
                                 while (!already_suspend) {
                                     std::this_thread::yield();
                                 }
-                                executor_traits::execute(exec, handle_to_resume);
+                                suspend_base::execute(handle_to_resume);
                             }
                         }
                     }
                     };
 
-                auto void_callback = [
-                    handle, n = this->n_, result = result_, exec = executor_,
+                auto void_callback = [this,
+                    handle, n = this->n_, result = result_, exec = this->executor_,
                     &error = error_, &stop = stop_source_,
                     &continuation = continuation_, &already_suspend = already_suspend_, &mtx = mtx_]
                     (auto& basic_task_result) {
@@ -560,7 +552,7 @@ namespace coflux {
                                 while (!already_suspend) {
                                     std::this_thread::yield();
                                 }
-                                executor_traits::execute(exec, handle_to_resume);
+                                suspend_base::execute(handle_to_resume);
                             }
                         }
                     }
@@ -594,8 +586,8 @@ namespace coflux {
             }
 
             decltype(auto) await_resume() {
+                suspend_base::await_resume();
                 std::atomic_thread_fence(std::memory_order_seq_cst);
-                maysuspend_awaiter_base::await_resume();
                 if (error_) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     std::rethrow_exception(error_);
                 }
@@ -610,7 +602,6 @@ namespace coflux {
             std::atomic_bool                     already_suspend_;
             result_proxy                         result_;
             std::exception_ptr                   error_ = nullptr;
-            executor_pointer                     executor_;
             std::atomic<std::coroutine_handle<>> continuation_;
             std::stop_source                     stop_source_;
             cancellaton_callback_type            cancellation_callback_;

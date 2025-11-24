@@ -97,16 +97,16 @@ namespace coflux {
 		};
 
 		template <typename Channel, executive Executor>
-		struct channel_write_awaiter : public channel_writer<Channel>, public maysuspend_awaiter_base {
+		struct channel_write_awaiter : public channel_writer<Channel>, public maysuspend_awaiter_base<Executor> {
 			using closure_base	   = channel_writer<Channel>;
+			using suspend_base     = maysuspend_awaiter_base<Executor>;
 			using value_type       = typename closure_base::value_type;
 			using channel_ptr	   = typename closure_base::channel_ptr;
-			using executor_traits  = ::coflux::executor_traits<Executor>;
-			using executor_type    = typename executor_traits::executor_type;
-			using executor_pointer = typename executor_traits::executor_pointer;
+			using executor_pointer = typename suspend_base::executor_pointer;
 
 			channel_write_awaiter(closure_base&& writer, executor_pointer exec, std::atomic<status>* st)
-				: closure_base(std::move(writer)), maysuspend_awaiter_base(st), executor_(exec) {}
+				: closure_base(std::move(writer))
+				, suspend_base(exec, st) {}
 			~channel_write_awaiter() = default;
 
 			channel_write_awaiter(const channel_write_awaiter&)			   = delete;
@@ -126,7 +126,7 @@ namespace coflux {
 
 			void await_suspend(std::coroutine_handle<> handle) {
 				if constexpr (!Channel::capacity()) {
-					maysuspend_awaiter_base::await_suspend();
+					suspend_base::await_suspend();
 					handle_ = handle;
 					this->channel_->Push_writer(channel_awaiter_proxy(this));
 				}
@@ -134,17 +134,16 @@ namespace coflux {
 
 			bool await_resume() noexcept {
 				if constexpr (!Channel::capacity()) {
-					maysuspend_awaiter_base::await_resume();
+					suspend_base::await_resume();
 				}
 				return this->success_flag_;
 			}
 
 			void resume(bool flag) {
 				this->success_flag_ = flag;
-				executor_traits::execute(executor_, handle_);
+				suspend_base::execute(handle_);
 			}
 
-			executor_pointer		executor_;
 			std::coroutine_handle<> handle_;
 		};
 
@@ -180,16 +179,16 @@ namespace coflux {
 		};
 
 		template <typename Channel, executive Executor>
-		struct channel_read_awaiter : public channel_reader<Channel>, public maysuspend_awaiter_base {
+		struct channel_read_awaiter : public channel_reader<Channel>, public maysuspend_awaiter_base<Executor> {
 			using closure_base     = channel_reader<Channel>;
+			using suspend_base     = maysuspend_awaiter_base<Executor>;
 			using value_type       = typename closure_base::value_type;
 			using channel_ptr      = typename closure_base::channel_ptr;
-			using executor_traits  = ::coflux::executor_traits<Executor>;
-			using executor_type    = typename executor_traits::executor_type;
-			using executor_pointer = typename executor_traits::executor_pointer;
+			using executor_pointer = typename suspend_base::executor_pointer;
 
 			channel_read_awaiter(closure_base&& reader, executor_pointer exec, std::atomic<status>* st)
-				: closure_base(std::move(reader)), maysuspend_awaiter_base(st), executor_(exec)  {}
+				: closure_base(std::move(reader))
+				, suspend_base(exec, st) {}
 			~channel_read_awaiter() = default;
 
 			channel_read_awaiter(const channel_read_awaiter&)		     = delete;
@@ -209,7 +208,7 @@ namespace coflux {
 
 			void await_suspend(std::coroutine_handle<> handle) {
 				if constexpr (!Channel::capacity()) {
-					maysuspend_awaiter_base::await_suspend();
+					suspend_base::await_suspend();
 					handle_ = handle;
 					this->channel_->Push_reader(channel_awaiter_proxy(this));
 				}
@@ -217,17 +216,16 @@ namespace coflux {
 
 			bool await_resume() noexcept {
 				if constexpr (!Channel::capacity()) {
-					maysuspend_awaiter_base::await_resume();
+					suspend_base::await_resume();
 				}
 				return this->success_flag_;
 			}
 
 			void resume(bool flag) {
 				this->success_flag_ = flag;
-				executor_traits::execute(executor_, handle_);
+				suspend_base::execute(handle_);
 			}
 
-			executor_pointer        executor_;
 			std::coroutine_handle<> handle_;
 		};
 

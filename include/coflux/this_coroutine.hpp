@@ -53,48 +53,16 @@ namespace coflux {
             std::coroutine_handle<Promise> handle_;
         };
 
-        /*
-        template <bool Ownership>
-        struct destroy_awaiter : public nonsuspend_awaiter_base, public ownership_tag<Ownership> {
-        public:
-            destroy_awaiter()  = default;
-            ~destroy_awaiter() = default;
-
-            destroy_awaiter(const destroy_awaiter&)            = default;
-            destroy_awaiter(destroy_awaiter&&)                 = default;
-            destroy_awaiter& operator=(const destroy_awaiter&) = default;
-            destroy_awaiter& operator=(destroy_awaiter&&)      = default;
-
-            bool await_ready() const noexcept {
-                return false;
-            }
-
-            void await_suspend(std::coroutine_handle<> handle) const {
-                handle.destroy();
-            }
-
-            void await_resume() const {
-                Can_not_resume_error();
-            }
-
-        private:
-            [[noreturn]] static void Can_not_resume_error() {
-                throw std::runtime_error("Destroyed coroutine will never resume.");
-            }
-        };
-        */
         template <bool Ownership, executive Executor>
-        struct dispatch_awaiter : public maysuspend_awaiter_base, public ownership_tag<Ownership> {
-            using executor_traits  = coflux::executor_traits<Executor>;
-            using executor_type    = typename executor_traits::executor_type;
-            using executor_pointer = typename executor_traits::executor_pointer;
+        struct dispatch_awaiter : public maysuspend_awaiter_base<Executor>, public ownership_tag<Ownership> {
+            using suspend_base     = maysuspend_awaiter_base<Executor>;
+            using executor_type    = typename suspend_base::executor_type;
+            using executor_pointer = typename suspend_base::executor_pointer;
 
-            explicit dispatch_awaiter(executor_pointer exec, std::atomic<status>* p)
-                : executor_(exec), maysuspend_awaiter_base{ p } {
-            }
-            explicit dispatch_awaiter(executor_type& exec, std::atomic<status>* p)
-                : executor_(&exec), maysuspend_awaiter_base{ p } {
-            }
+            explicit dispatch_awaiter(executor_pointer exec, std::atomic<status>* st = nullptr)
+                : suspend_base(exec, st) {}
+            explicit dispatch_awaiter(executor_type& exec, std::atomic<status>* st = nullptr)
+                : suspend_base(exec, st) {}
             ~dispatch_awaiter() = default;
 
             dispatch_awaiter(const dispatch_awaiter&)            = delete;
@@ -107,26 +75,24 @@ namespace coflux {
             }
 
             void await_suspend(std::coroutine_handle<> handle) {
-                maysuspend_awaiter_base::await_suspend();
-                executor_traits::execute(executor_, handle);
+                suspend_base::await_suspend();
+                suspend_base::execute(handle);
             }
 
             void await_resume() {
-                maysuspend_awaiter_base::await_resume();
+                suspend_base::await_resume();
             }
-
-            executor_pointer executor_;
         };
 
         template <executive Executor>
-        struct sleep_awaiter : public maysuspend_awaiter_base {
-            using executor_traits  = coflux::executor_traits<Executor>;
-            using executor_type    = typename executor_traits::executor_type;
-            using executor_pointer = typename executor_traits::executor_pointer;
+        struct sleep_awaiter : public maysuspend_awaiter_base<Executor> {
+            using suspend_base     = maysuspend_awaiter_base<Executor>;
+            using executor_type    = typename suspend_base::executor_type;
+            using executor_pointer = typename suspend_base::executor_pointer;
 
-            sleep_awaiter(std::chrono::milliseconds timer, std::atomic<status>* p)
-                : timer_(timer)
-                , maysuspend_awaiter_base{ p } {}
+            sleep_awaiter(std::chrono::milliseconds timer, std::atomic<status>* st)
+                : suspend_base(st)
+                , timer_(timer) {}
             ~sleep_awaiter() = default;
 
             sleep_awaiter(const sleep_awaiter&)            = delete;
@@ -140,19 +106,20 @@ namespace coflux {
 
             template <typename Promise>
             void await_suspend(std::coroutine_handle<Promise> handle) noexcept {
-                maysuspend_awaiter_base::await_suspend();
+                suspend_base::await_suspend();
                 auto& sch = handle.promise().scheduler_;
+                suspend_base::set_executor_ptr(&sch.template get<Executor>());
                 coflux::executor_traits<timer_executor>::execute(
                     &sch.template get<timer_executor>(),
-                    [handle, target_exec = sch.template get<Executor>()]() mutable { 
-                        executor_traits::execute(&target_exec, handle); 
+                    [this, handle]() mutable { 
+                        suspend_base::execute(handle);
                     },
                     timer_
                 );
             }
 
             void await_resume() noexcept {
-                maysuspend_awaiter_base::await_resume();
+                suspend_base::await_resume();
             }
 
             std::chrono::milliseconds timer_;
@@ -194,21 +161,7 @@ namespace coflux {
         };
         
         template <bool Ownership>
-        struct cancel_awaiter : public ownership_tag<Ownership> {
-            cancel_awaiter()  = default;
-            ~cancel_awaiter() = default;
-
-            cancel_awaiter(const cancel_awaiter&)            = delete;
-            cancel_awaiter(cancel_awaiter&&)                 = default;
-            cancel_awaiter& operator=(const cancel_awaiter&) = delete;
-            cancel_awaiter& operator=(cancel_awaiter&&)      = default;
-
-            bool await_ready() const noexcept { return false; }
-
-            void await_suspend(std::coroutine_handle<> handle) noexcept {}
-
-            void await_resume() const noexcept {}
-        };
+        struct cancel_t : public ownership_tag<Ownership> {};
 
         template <bool Ownership>
         struct destroy_forks_awaiter : public nonsuspend_awaiter_base, public ownership_tag<Ownership> {
@@ -234,7 +187,7 @@ namespace coflux {
             void await_resume() const noexcept {}
         };
 
-        struct get_memory_resource_awaiter : public nonsuspend_awaiter_base {
+        struct get_memory_resource_awaiter : public nonsuspend_awaiter_base, public ownership_unlimited_tag {
             get_memory_resource_awaiter()  = default;
             ~get_memory_resource_awaiter() = default;
 
@@ -261,7 +214,7 @@ namespace coflux {
         };
 
         template <schedulable Scheduler>
-        struct get_scheduler_awaiter : public nonsuspend_awaiter_base {
+        struct get_scheduler_awaiter : public nonsuspend_awaiter_base, ownership_unlimited_tag {
             get_scheduler_awaiter()  = default;
             ~get_scheduler_awaiter() = default;
 
@@ -440,7 +393,7 @@ namespace coflux {
         // execute operations
         template <executive Executor>
         inline auto dispatch(Executor* exec) noexcept {
-            return detail::dispatch_awaiter<true, Executor, std::suspend_never>{ exec };
+            return detail::dispatch_awaiter<true, Executor>{ exec };
         }
 
         template <typename Rep, typename Period>
@@ -457,7 +410,7 @@ namespace coflux {
             return detail::get_stop_token_awaiter<true>{};
         }
         inline auto cancel() noexcept {
-            return detail::cancel_awaiter<true>{};
+            return detail::cancel_t<true>{};
         }
 
         // fork operations
@@ -503,7 +456,7 @@ namespace coflux {
             return detail::get_stop_token_awaiter<false>{};
         }
         inline auto cancel() noexcept {
-            return detail::cancel_awaiter<false>{};
+            return detail::cancel_t<false>{};
         }
 
         // fork operations

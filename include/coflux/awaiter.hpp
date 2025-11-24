@@ -9,10 +9,19 @@
 
 namespace coflux {
     namespace detail {
-        struct nonsuspend_awaiter_base {};
+        struct nonsuspend_awaiter_base : public suspend_tag<false> {};
 
-        struct maysuspend_awaiter_base {
-            maysuspend_awaiter_base(std::atomic<status>* st) noexcept : waiter_status_(st) {}
+        template <executive Executor>
+        struct maysuspend_awaiter_base : public suspend_tag<true> {
+            using executor_traits  = ::coflux::executor_traits<Executor>;
+            using executor_type    = typename executor_traits::executor_type;
+            using executor_pointer = typename executor_traits::executor_pointer;
+
+            maysuspend_awaiter_base(executor_pointer exec, std::atomic<status>* st) noexcept 
+                : executor_(exec)
+                , waiter_status_(st) {}
+            maysuspend_awaiter_base(std::atomic<status>* st) noexcept
+                : waiter_status_(st) {}
             ~maysuspend_awaiter_base() = default;
 
             void await_suspend() {
@@ -27,7 +36,16 @@ namespace coflux {
                 waiter_status_ = p;
             }
 
-            std::atomic<status>* waiter_status_ = nullptr;
+            void set_executor_ptr(executor_pointer exec) {
+                executor_ = exec;
+            }
+
+            void execute(std::coroutine_handle<> handle) {
+                executor_traits::execute(executor_, handle);
+            }
+
+            executor_pointer        executor_      = nullptr;
+            std::atomic<status>*    waiter_status_ = nullptr;
         };
 
         struct final_awaiter {
@@ -61,21 +79,18 @@ namespace coflux {
         struct awaiter;
 
         template <task_like TaskLike, executive Executor>
-        struct awaiter<TaskLike, Executor> : public detail::maysuspend_awaiter_base {
+        struct awaiter<TaskLike, Executor> : public detail::maysuspend_awaiter_base<Executor> {
         public:
+            using suspend_base     = maysuspend_awaiter_base<Executor>;
             using task_type        = std::conditional_t<std::is_rvalue_reference_v<TaskLike>, std::remove_reference_t<TaskLike>, TaskLike>;
             using value_type       = typename std::remove_reference_t<task_type>::value_type;
             using result_proxy     = task_type;
-            using executor_traits  = coflux::executor_traits<Executor>;
-            using executor_type    = typename executor_traits::executor_type;
-            using executor_pointer = typename executor_traits::executor_pointer;
+            using executor_pointer = typename suspend_base::executor_pointer;
 
         public:
             explicit awaiter(TaskLike&& co_task, executor_pointer exec, std::atomic<status>* p)
-                : task_(std::forward<TaskLike>(co_task))
-                , executor_(exec)
-                , maysuspend_awaiter_base{ p } {
-            }
+                : suspend_base(exec, p)
+                , task_(std::forward<TaskLike>(co_task)) {}
             ~awaiter() {};
 
             awaiter(const awaiter&)            = delete;
@@ -92,22 +107,21 @@ namespace coflux {
                 if (task_.done()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
                     return false;
                 }
-                maysuspend_awaiter_base::await_suspend();
+                suspend_base::await_suspend();
                 std::atomic_signal_fence(std::memory_order_acquire);
-                task_.then([exec = executor_, handle]() {
-                        executor_traits::execute(exec, handle);
+                task_.then([this, handle]() {
+                    suspend_base::execute(handle);
                     });
                 return true;
             }
 
             decltype(auto) await_resume() {
-                maysuspend_awaiter_base::await_resume();
+                suspend_base::await_resume();
                 return std::forward<TaskLike>(task_).get_result();
             }
 
         private:
-            task_type        task_;
-            executor_pointer executor_;
+            task_type task_;
         };
 
         template <bool Ownership, typename Promise>
