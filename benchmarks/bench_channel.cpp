@@ -5,7 +5,7 @@
 #include <coflux/combiner.hpp>
 #include <coflux/this_coroutine.hpp>
 #include <iostream>
-/* exprimental...
+
 struct pool_option {
     static constexpr std::size_t WORKSTEAL_LOCAL_QUEUE_CAPACITY = 2;
 };
@@ -66,7 +66,7 @@ BENCHMARK(BM_Channel_Buffered_SPSC)
 // MPMC : N Producers, N Consumers
 static void BM_Channel_Buffered_MPMC(benchmark::State& state) {
 
-    auto env = coflux::make_environment(sche{pool(), group(), timer()});
+    auto env = coflux::make_environment(sche{});
 
     for (auto _ : state) {
         state.PauseTiming();
@@ -88,7 +88,7 @@ static void BM_Channel_Buffered_MPMC(benchmark::State& state) {
                 forks.push_back([](auto&&, coflux::channel<int[4096]>& chan, long long count) -> coflux::fork<void, pool> {
                     for (long long i = 0; i < count; ++i) {
                         while (!co_await(chan << i)) { 
-                            co_await coflux::this_fork::yield();
+                            //co_await coflux::this_fork::yield();
                         }
                     }
                     }(ctx, chan, items_per_thread));
@@ -100,13 +100,16 @@ static void BM_Channel_Buffered_MPMC(benchmark::State& state) {
                     int val;
                     for (long long i = 0; i < count; ++i) {
                         while (!co_await(chan >> val)) { 
-                            co_await coflux::this_fork::yield();
+                            //co_await coflux::this_fork::yield();
                         }
+                        //std::this_thread::sleep_for(std::chrono::nanoseconds(10));
                     }
                     }(ctx, chan, items_per_thread));
             }
-            
-            co_await coflux::when(forks);
+
+            for (auto& f : forks)
+                co_await f;
+            // co_await coflux::when(forks);
 
             state.PauseTiming();
             }(env, state, chan, total_items);
@@ -164,4 +167,3 @@ BENCHMARK(BM_Channel_Unbuffered_PingPong)
     ->Arg(10000)
     ->Arg(100000)
     ->UseRealTime();
-*/

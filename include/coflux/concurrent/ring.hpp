@@ -327,38 +327,30 @@ namespace coflux {
 		static constexpr size_type align = Align;
 
 	public:
-		MPMC_ring() {
-			reset();
-		}
+		MPMC_ring()  = default;
 		~MPMC_ring() = default;
 
 		MPMC_ring(const MPMC_ring&)            = delete;
 		MPMC_ring(MPMC_ring&&)                 = delete;
 		MPMC_ring& operator=(const MPMC_ring&) = delete;
 		MPMC_ring& operator=(MPMC_ring&&)      = delete;
-		
-		void reset() /* Unsync */ noexcept {
-			buffer_ = std::make_unique<buffer>();
-			head_.store(0, std::memory_order_seq_cst);
-			tail_.store(0, std::memory_order_seq_cst);
-		}
 
 		template <typename...Args>
 		void push_back(Args&&...args) {
 			size_type head = head_.fetch_add(1, std::memory_order_acq_rel);
-			(*buffer_)[head & mask].spin_until_store(Sequence(head) << 1, std::forward<Args>(args)...);
+			buffer_[head & mask].spin_until_store(Sequence(head) << 1, std::forward<Args>(args)...);
 		}
 
 		value_type pop_front() {
 			size_type tail = tail_.fetch_add(1, std::memory_order_acq_rel);
-			return (*buffer_)[tail & mask].spin_until_load((Sequence(tail) << 1) + 1);
+			return buffer_[tail & mask].spin_until_load((Sequence(tail) << 1) + 1);
 		}
 
 		template <typename...Args>
 		bool try_push_back(Args&&...args) {
 			while (true) {
 				size_type head = head_.load(std::memory_order_acquire);
-				auto& slt = (*buffer_)[head & mask];
+				auto& slt = buffer_[head & mask];
 				if ((Sequence(head) << 1) == slt.sequence_.load(std::memory_order_acquire)) {
 					if (head_.compare_exchange_strong(head, head + 1, std::memory_order_acq_rel, std::memory_order_relaxed)) {
 						slt.store(std::forward<Args>(args)...);
@@ -376,7 +368,7 @@ namespace coflux {
 		std::optional<value_type> try_pop_front() {
 			while (true) {
 				size_type tail = tail_.load(std::memory_order_acquire);
-				auto& slt = (*buffer_)[tail & mask];
+				auto& slt = buffer_[tail & mask];
 				if ((Sequence(tail) << 1) + 1 == slt.sequence_.load(std::memory_order_acquire)) {
 					if (tail_.compare_exchange_strong(tail, tail + 1, std::memory_order_acq_rel, std::memory_order_relaxed)) {
 						return slt.load();
@@ -423,9 +415,9 @@ namespace coflux {
 			return count / capacity();
 		}
 
-		alignas(align) std::unique_ptr<buffer> buffer_;
-		alignas(align) std::atomic_size_t	   head_ = 0;
-		alignas(align) std::atomic_size_t	   tail_ = 0;
+		alignas(align) buffer			   buffer_;
+		alignas(align) std::atomic_size_t  head_ = 0;
+		alignas(align) std::atomic_size_t  tail_ = 0;
 	};
 }
 

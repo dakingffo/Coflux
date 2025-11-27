@@ -251,7 +251,7 @@ namespace coflux {
 		using reference		  = Ty&;
 		using const_reference = const Ty&;
 
-		using value_queue_type   = MPMC_ring<value_type, N, 64>;
+		using value_queue_type   = std::unique_ptr<MPMC_ring<value_type, N, 64>>;
 
 	public:
 		static constexpr size_type capacity() noexcept {
@@ -296,7 +296,13 @@ namespace coflux {
 
 		bool Launch() noexcept {
 			bool expected = false;
-			return active_.compare_exchange_strong(expected, true, std::memory_order_seq_cst, std::memory_order_relaxed);
+			if (active_.compare_exchange_strong(expected, true, std::memory_order_seq_cst, std::memory_order_relaxed)) {
+				queue_ = std::make_unique<MPMC_ring<value_type, N, 64>>();
+				return true;
+			}
+			else {
+				return false;
+			}
 		}
 
 		bool Close() noexcept {
@@ -315,7 +321,7 @@ namespace coflux {
 				return false;
 			}
 
-			return queue_.try_push_back(value);
+			return queue_->try_push_back(value);
 		}
 
 		bool Push_reader(reference value) {
@@ -323,7 +329,7 @@ namespace coflux {
 				return false;
 			}
 
-			std::optional<value_type> opt = queue_.try_pop_front();
+			std::optional<value_type> opt = queue_->try_pop_front();
 			if (opt) {
 				value = std::move(opt).value();
 				return true;
@@ -334,15 +340,15 @@ namespace coflux {
 		}
 
 		void Clean() {
-			queue_.reset();
+			queue_ = nullptr;
 		}
 
 		COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void Channel_closed_error() {
 			throw std::runtime_error("The channel is closed.");
 		}
 
-		std::atomic_bool   active_;
-		value_queue_type   queue_;
+		std::atomic_bool   active_ = false;
+		value_queue_type   queue_  = nullptr;
 	};
 
 	template <typename Ty>

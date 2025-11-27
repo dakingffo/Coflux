@@ -8,37 +8,33 @@
 #include <vector>
 #include <thread>
 #include <numeric>
-/* exprimental...
+
 using namespace coflux;
 
 // --- 1. SPSC 基础测试 (非阻塞模式) ---
 TEST(ChannelTest, BasicSPSC) {
-    using group = worker_group<3>;
+    using pool = thread_pool_executor<>;
     using timer = timer_executor;
-    using sche = scheduler<group, timer>;
+    using sche = scheduler<pool, timer>;
     auto env = make_environment(sche{});
 
-    auto test = [](auto env) -> task<void, group::worker<0>, sche> {
-        channel<int[8]> chan; // 有界通道 (非阻塞)
+    auto test = [](auto env) -> task<void, pool, sche> {
+        channel<int[64]> chan; // 有界通道 (非阻塞)
 
         // 生产者
-        auto producer = [](auto&&, channel<int[8]>& chan) -> coflux::fork<void, group::worker<1>> {
+        auto producer = [](auto&&, channel<int[64]>& chan) -> coflux::fork<void, pool> {
             for (int i = 0; i < 100; ++i) {
                 // 自旋重试直到写入成功
-                while (!co_await(chan << i)) {
-                    co_await coflux::this_fork::yield(); 
-                }
+                while (!co_await(chan << i)) {}
             }
             }(co_await context(), chan);
 
         // 消费者
-        auto consumer = [](auto&&, channel<int[8]>& chan) -> coflux::fork<void, group::worker<2>> {
+        auto consumer = [](auto&&, channel<int[64]>& chan) -> coflux::fork<void, pool> {
             int val;
             for (int i = 0; i < 100; ++i) {
                 // 自旋重试直到读取成功
-                while (!co_await(chan >> val)) {
-                    co_await coflux::this_fork::yield();
-                }
+                while (!co_await(chan >> val)) {}
                 EXPECT_EQ(val, i);
             }
             }(co_await context(), chan);
@@ -51,17 +47,17 @@ TEST(ChannelTest, BasicSPSC) {
 
 // --- 2. MPMC 并发测试 (非阻塞测试) ---
 TEST(ChannelTest, ConcurrentMPMC) {
-    using group = worker_group<5>;
+    using pool = thread_pool_executor<>;
     using timer = timer_executor;
-    using sche = scheduler<group, timer>;
+    using sche = scheduler<pool, timer>;
     auto env = make_environment(sche{});
 
-    auto test = [](auto env) -> task<void, group<>, sche> {
+    auto test = [](auto env) -> task<void, pool, sche> {
         // 容量较小，强制触发满/空状态
         channel<int[128]> chan;
         const int N_PRODUCERS = 2;
         const int N_CONSUMERS = 2;
-        const int ITEMS_PER_PRODUCER = 20;
+        const int ITEMS_PER_PRODUCER = 100;
 
         std::atomic<int> total_consumed = 0;
 
@@ -97,9 +93,12 @@ TEST(ChannelTest, ConcurrentMPMC) {
         for (int i = 0; i < N_CONSUMERS; ++i) consumers.push_back(make_consumer(ctx, chan, total_consumed));
 
         // 等待所有任务完成
-        co_await when(producers);
-        co_await when(consumers);
-
+        // co_await when(producers);
+        // co_await when(consumers);
+        for (auto& p : producers)
+            co_await p;
+        for (auto& c : consumers) 
+            co_await c;
         EXPECT_EQ(total_consumed.load(), N_PRODUCERS * ITEMS_PER_PRODUCER);
 
         }(env);
@@ -227,4 +226,3 @@ TEST(ChannelTest, CloseChannel) {
 
     test.join();
 }
-*/
