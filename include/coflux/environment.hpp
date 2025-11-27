@@ -72,7 +72,7 @@ namespace coflux {
 
 	template <schedulable Scheduler>
 	auto make_environment(Scheduler&& sch) {
-		return make_environment(std::pmr::get_default_resource(), std::forward<Scheduler>(sch));
+		return make_environment(std::pmr::get_default_resource(), std::move(sch));
 	}
 
 	template <schedulable Scheduler, executive...Executors>

@@ -34,17 +34,41 @@ namespace coflux {
 
 	template <typename Constants>
 	struct unbounded_queue_constant_traits {
-		static constexpr std::size_t ENQUEUE_SPIN_TIMES = requires{ Constants::ENQUEUE_SPIN_TIMES; } ?
-			size_upper(Constants::ENQUEUE_SPIN_TIMES) : default_unbounded_queue_constants::ENQUEUE_SPIN_TIMES;
+		static constexpr std::size_t ENQUEUE_SPIN_TIMES = []() consteval -> std::size_t {
+			if constexpr (requires{ Constants::ENQUEUE_SPIN_TIMES; }) {
+				return Constants::ENQUEUE_SPIN_TIMES;
+			}
+			else {
+				return default_unbounded_queue_constants::ENQUEUE_SPIN_TIMES;
+			}
+		}();
 
-		static constexpr std::size_t ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD = requires{ Constants::ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD; } ?
-			size_upper(Constants::ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD) : default_unbounded_queue_constants::ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD;
+		static constexpr std::size_t ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD = []() consteval -> std::size_t {
+			if constexpr (requires{ Constants::ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD; }) {
+				return Constants::ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD;
+			}
+			else {
+				return default_unbounded_queue_constants::ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD;
+			}
+		}();
 
-		static constexpr std::size_t DEQUEUE_SPIN_TIMES = requires{ Constants::DEQUEUE_SPIN_TIMES; } ?
-			size_upper(Constants::DEQUEUE_SPIN_TIMES) : default_unbounded_queue_constants::DEQUEUE_SPIN_TIMES;
+		static constexpr std::size_t DEQUEUE_SPIN_TIMES = []() consteval -> std::size_t {
+			if constexpr (requires{ Constants::DEQUEUE_SPIN_TIMES; }) {
+				return Constants::DEQUEUE_SPIN_TIMES;
+			}
+			else {
+				return default_unbounded_queue_constants::DEQUEUE_SPIN_TIMES;
+			}
+		}();
 
-		static constexpr std::size_t DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD = requires{ Constants::DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD; } ?
-			size_upper(Constants::DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD) : default_unbounded_queue_constants::DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD;
+		static constexpr std::size_t DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD = []() consteval -> std::size_t {
+			if constexpr (requires{ Constants::DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD; }) {
+				return Constants::DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD;
+			}
+			else {
+				return default_unbounded_queue_constants::DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD;
+			}
+		}();
 	};
 
 	template <typename Container = unsync_ring<std::coroutine_handle<>>, 
@@ -94,19 +118,15 @@ namespace coflux {
 			enqueue(std::forward<Ref>(value));
 		}
 
-		bool pop(const std::atomic_bool& continuation = true) {
+		void pop() {
 			std::unique_lock<std::mutex> lock(mtx_);
-			not_empty_cv_.wait(lock, [this, &continuation]() {
-				return size_.load(std::memory_order_relaxed) > 0 || !continuation.load(std::memory_order_relaxed);
-				});
-			if (!continuation || size_.load(std::memory_order_relaxed) == 0) {
-				return false;
+			if (size_.load(std::memory_order_relaxed)) {
+				cont_.pop_front();
+				if (size_.fetch_sub(1, std::memory_order_release) - 1) {
+					not_empty_cv_.notify_one();
+				}
 			}
-			cont_.pop_front();
-			if (size_.fetch_sub(1, std::memory_order_acq_rel)) {
-				not_empty_cv_.notify_one();
-			}
-			return true;
+			return;
 		}
 
 		template <typename Ref>
@@ -115,8 +135,8 @@ namespace coflux {
 				if (mtx_.try_lock()) {
 					cont_.push_back(std::forward<Ref>(value));
 					size_.fetch_add(1, std::memory_order_release);
-					mtx_.unlock();
 					not_empty_cv_.notify_one();
+					mtx_.unlock();
 					return;
 				}
 				if (i & (constant_traits::ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD - 1)) {
@@ -139,7 +159,9 @@ namespace coflux {
 					}
 					value_type element = cont_.front();
 					cont_.pop_front();
-					size_.fetch_sub(1, std::memory_order_release);
+					if (size_.fetch_sub(1, std::memory_order_release) - 1) {
+						not_empty_cv_.notify_one();
+					}
 					mtx_.unlock();
 					return element;
 				}
@@ -154,7 +176,7 @@ namespace coflux {
 				});
 			value_type element = cont_.front();
 			cont_.pop_front();
-			if (size_.fetch_sub(1, std::memory_order_release)) {
+			if (size_.fetch_sub(1, std::memory_order_release) - 1) {
 				not_empty_cv_.notify_one();
 			}
 			return element;
@@ -171,7 +193,7 @@ namespace coflux {
 			}
 			value_type element = cont_.front();
 			cont_.pop_front();
-			if (size_.fetch_sub(1, std::memory_order_release)) {
+			if (size_.fetch_sub(1, std::memory_order_release) - 1) {
 				not_empty_cv_.notify_one();
 			}
 			return element;
@@ -190,7 +212,9 @@ namespace coflux {
 						*buffer++ = cont_.front();
 						cont_.pop_front();
 					}
-					size_.fetch_sub(counter, std::memory_order_release);
+					if (size_.fetch_sub(counter, std::memory_order_release) - counter) {
+						not_empty_cv_.notify_one();
+					}
 					mtx_.unlock();
 					return counter;
 				}
@@ -208,7 +232,7 @@ namespace coflux {
 				*buffer++ = cont_.front();
 				cont_.pop_front();
 			}
-			if (size_.fetch_sub(counter, std::memory_order_release)) {
+			if (size_.fetch_sub(counter, std::memory_order_release) - counter) {
 				not_empty_cv_.notify_one();
 			}
 			return counter;
@@ -230,10 +254,42 @@ namespace coflux {
 				*buffer++ = cont_.front();
 				cont_.pop_front();
 			}
-			if (size_.fetch_sub(counter, std::memory_order_release)) {
+			if (size_.fetch_sub(counter, std::memory_order_release) - counter) {
 				not_empty_cv_.notify_one();
 			}
 			return counter;
+		}
+
+		value_type try_dequeue() {
+			for (int i = 0; i < constant_traits::DEQUEUE_SPIN_TIMES; i++) {
+				if (mtx_.try_lock()) {
+					if (size_.load(std::memory_order_relaxed) == 0) {
+						mtx_.unlock();
+						return value_type(nullptr);
+					}
+					value_type element = cont_.front();
+					cont_.pop_front();
+					if (size_.fetch_sub(1, std::memory_order_release) - 1) {
+						not_empty_cv_.notify_one();
+					}
+					mtx_.unlock();
+					return element;
+				}
+				if (i & (constant_traits::DEQUEUE_SPIN_INTERVAL_OF_EACH_YIELD - 1)) {
+					std::this_thread::yield();
+				}
+			}
+
+			std::unique_lock<std::mutex> lock(mtx_);
+			if (size_ == 0) {
+				return value_type(nullptr);
+			}
+			value_type element = cont_.front();
+			cont_.pop_front();
+			if (size_.fetch_sub(1, std::memory_order_release) - 1) {
+				not_empty_cv_.notify_one();
+			}
+			return element;
 		}
 
 		template <typename ForwardIt>
@@ -242,14 +298,16 @@ namespace coflux {
 				if (mtx_.try_lock()) {
 					if (size_.load(std::memory_order_relaxed) == 0) {
 						mtx_.unlock();
-						break;
+						return 0;
 					}
 					std::size_t counter = 0;
 					for (; counter < std::min(capacity, size_.load(std::memory_order_relaxed)); counter++) {
 						*buffer++ = cont_.front();
 						cont_.pop_front();
 					}
-					size_.fetch_sub(counter, std::memory_order_release);
+					if (size_.fetch_sub(counter, std::memory_order_release) - counter) {
+					not_empty_cv_.notify_one();
+					}
 					mtx_.unlock();
 					return counter;
 				}
@@ -267,7 +325,7 @@ namespace coflux {
 				*buffer++ = cont_.front();
 				cont_.pop_front();
 			}
-			if (size_.fetch_sub(counter, std::memory_order_release)) {
+			if (size_.fetch_sub(counter, std::memory_order_release) - counter) {
 				not_empty_cv_.notify_one();
 			}
 			return counter;

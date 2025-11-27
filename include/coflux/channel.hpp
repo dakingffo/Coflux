@@ -323,8 +323,8 @@ namespace coflux {
 				return false;
 			}
 
-			std::optional<value_type> opt;
-			if (opt = queue_.try_pop_front()) {
+			std::optional<value_type> opt = queue_.try_pop_front();
+			if (opt) {
 				value = std::move(opt).value();
 				return true;
 			}

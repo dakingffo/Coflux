@@ -71,14 +71,26 @@ namespace coflux {
 		scheduler() = default;
 		~scheduler() = default;
 
-		template <certain_executor Idx>
-		auto& get() {
-			return std::get<Idx::value>(tp_);
-		}
-
 		template <executive Executor>
 		auto& get() {
-			return std::get<Executor>(tp_);
+			if constexpr (requires {typename Executor::owner_group;}) {
+				auto& group = std::get<typename Executor::owner_group>(tp_);
+				return group.template get<Executor::pos>();
+			}
+			else {
+				return std::get<Executor>(tp_);
+			}
+		}
+
+		template <certain_executor Idx>
+		auto& get() {
+			auto& res = std::get<Idx::value>(tp_);
+			if constexpr (requires {typename Idx::type::owner_group;}) {
+				return res.template get<Idx::pos>();
+			}
+			else {
+				return res;
+			}
 		}
 
 		template <executive_or_certain_executor...Execs>
@@ -112,22 +124,36 @@ namespace coflux {
 		scheduler& operator=(const scheduler&) = default;
 		scheduler& operator=(scheduler&&)      = default;
 
+		template <executive Executor>
+		auto& get() noexcept /* Call std::terminate when throw */ {
+			if constexpr (requires {typename Executor::owner_group; }) {
+				auto p = static_cast<typename Executor::owner_group*>(vptr_->get_arg_by_typeid(scheduler_instance_, typeid(typename Executor::owner_group)));
+				if (!p) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+					Null_ptr_error();
+				}
+				return p->template get<Executor::pos>();
+			}
+			else {
+				auto p = static_cast<Executor*>(vptr_->get_arg_by_typeid(scheduler_instance_, typeid(Executor)));
+				if (!p) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+					Null_ptr_error();
+				}
+				return *p;
+			}
+		}
+
 		template <certain_executor Idx>
 		auto& get() noexcept /* Call std::terminate when throw */ {
 			auto p = static_cast<typename Idx::type*>(vptr_->get_arg_by_index(scheduler_instance_, Idx::value));
 			if (!p) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				Null_ptr_error();
 			}
-			return *p;
-		}
-
-		template <executive Executor>
-		auto& get() noexcept /* Call std::terminate when throw */ {
-			auto p = static_cast<Executor*>(vptr_->get_arg_by_typeid(scheduler_instance_, typeid(Executor)));
-			if (!p) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-				Null_ptr_error();
+			if constexpr (requires {typename Idx::owner_group; }) {
+				return p->template get<Idx::pos>();
 			}
-			return *p;
+			else {
+				return *p;
+			}
 		}
 
 		template <executive_or_certain_executor...Executors>

@@ -15,23 +15,53 @@
 
 namespace coflux {
 	struct default_thread_pool_constants {
-		static constexpr std::size_t WORKSTEAL_LOCAL_QUEUE_CAPACITY = 32;
+		static constexpr std::size_t TRY_STEAL_MAX_SPIN_TIMES_BEFORE_BLOCKING = 1024;
 
-		static constexpr std::size_t ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL = 64;
+		static constexpr std::size_t WORKSTEAL_LOCAL_QUEUE_CAPACITY       	  = 32;
 
-		static constexpr std::size_t CACHED_MAX_IDLE_TIME_SECONDS   = 60;
+		static constexpr std::size_t ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL           = 64;
+
+		static constexpr std::size_t CACHED_MAX_IDLE_TIME_SECONDS             = 60;
 	};
 
 	template <typename Constants>
 	struct thread_pool_constant_traits {
-		static constexpr std::size_t WORKSTEAL_LOCAL_QUEUE_CAPACITY = requires{ Constants::WORKSTEAL_LOCAL_QUEUE_CAPACITY; } ?
-			size_upper(Constants::WORKSTEAL_LOCAL_QUEUE_CAPACITY) : default_thread_pool_constants::WORKSTEAL_LOCAL_QUEUE_CAPACITY;
+		static constexpr std::size_t TRY_STEAL_MAX_SPIN_TIMES_BEFORE_BLOCKING = []() consteval -> std::size_t {
+			if constexpr (requires{ Constants::TRY_STEAL_MAX_SPIN_TIMES_BEFORE_BLOCKING; }) {
+				return Constants::TRY_STEAL_MAX_SPIN_TIMES_BEFORE_BLOCKING;
+			}
+			else {
+				return default_thread_pool_constants::WORKSTEAL_LOCAL_QUEUE_CAPACITY;
+			}
+		}();
 
-		static constexpr std::size_t ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL = requires{ Constants::ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL; } ?
-			size_upper(Constants::ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL) : default_thread_pool_constants::ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL;
+		static constexpr std::size_t WORKSTEAL_LOCAL_QUEUE_CAPACITY = []() consteval -> std::size_t {
+			if constexpr (requires{ Constants::WORKSTEAL_LOCAL_QUEUE_CAPACITY; }) {
+				return Constants::WORKSTEAL_LOCAL_QUEUE_CAPACITY;
+			}
+			else {
+				return default_thread_pool_constants::WORKSTEAL_LOCAL_QUEUE_CAPACITY;
+			}
+		}();
 
-		static constexpr std::size_t CACHED_MAX_IDLE_TIME_SECONDS   = requires{ Constants::CACHED_MAX_IDLE_TIME_SECONDS; } ?
-			Constants::CACHED_MAX_IDLE_TIME_SECONDS : default_thread_pool_constants::CACHED_MAX_IDLE_TIME_SECONDS;
+
+		static constexpr std::size_t ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL = []() consteval -> std::size_t {
+			if constexpr (requires{ Constants::ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL; }) {
+				return Constants::ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL;
+			}
+			else {
+				return default_thread_pool_constants::ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL;
+			}
+		}();
+
+		static constexpr std::size_t CACHED_MAX_IDLE_TIME_SECONDS = []() consteval -> std::size_t {
+			if constexpr (requires{ Constants::CACHED_MAX_IDLE_TIME_SECONDS; }) {
+				return Constants::CACHED_MAX_IDLE_TIME_SECONDS;
+			}
+			else {
+				return default_thread_pool_constants::CACHED_MAX_IDLE_TIME_SECONDS;
+			}
+		}();
 	};
 
 	template <typename TaskQueue, typename Constants>
@@ -39,8 +69,11 @@ namespace coflux {
 	public:
 		using constant_traits = thread_pool_constant_traits<Constants>;
 
-		using thread_type    = worksteal_thread<constant_traits::WORKSTEAL_LOCAL_QUEUE_CAPACITY, 
-			constant_traits::ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL, constant_traits::CACHED_MAX_IDLE_TIME_SECONDS>;
+		using thread_type    = worksteal_thread<
+			constant_traits::TRY_STEAL_MAX_SPIN_TIMES_BEFORE_BLOCKING,
+			constant_traits::WORKSTEAL_LOCAL_QUEUE_CAPACITY, 
+			constant_traits::ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL, 
+			constant_traits::CACHED_MAX_IDLE_TIME_SECONDS>;
 		using queue_type     = TaskQueue;
 		using value_type     = std::coroutine_handle<>;
 
@@ -60,7 +93,7 @@ namespace coflux {
 			run();
 		}
 		~thread_pool() {
-			shut_down();
+			shutdown();
 		};
 
 		thread_pool(const thread_pool&)			   = delete;
@@ -89,7 +122,7 @@ namespace coflux {
 			}
 		}
 
-		void shut_down() {
+		void shutdown() {
 			bool expected = true;
 			if (running_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
 				for (std::size_t i = 0; i < thread_size_threshold_ * 64; i++) {
@@ -156,7 +189,7 @@ namespace coflux {
 			for (int i = 0; i < thread_size_threshold_; i++) {
 				if (thread_list_[i]->active() == false) {
 					thread_list_[i]->try_join();
-					thread_list_[i]->enable(task_queue_, mode_, running_, thread_size_, basic_thread_size_, thread_list_);
+					thread_list_[i]->enable(task_queue_, mode_, running_, thread_size_,basic_thread_size_, thread_list_);
 					thread_size_++;
 					return;
 				}

@@ -13,7 +13,7 @@ namespace coflux {
 		fixed, cached
 	};
 
-	template <std::size_t N, std::size_t Align, std::size_t Idle>
+	template <std::size_t TryStealSpin, std::size_t N, std::size_t Align, std::size_t Idle>
 	class worksteal_thread {
 	public:
 		static_assert(  N,			  "N shoud be larger than zero");
@@ -35,7 +35,7 @@ namespace coflux {
 		worksteal_thread& operator=(worksteal_thread&&) noexcept = delete;
 
 		bool active() noexcept {
-			return active_;
+			return active_.load(std::memory_order_relaxed);
 		}
 
 		void try_join() {
@@ -49,13 +49,12 @@ namespace coflux {
 			TaskQueue& 										task_queue,
 			mode											run_mode,
 			std::atomic_bool& 								running,
-			std::atomic<std::size_t>& 						thread_size,
+			std::atomic_size_t&	 					     	thread_size,
 			std::size_t										basic_thread_size,
 			std::vector<std::unique_ptr<worksteal_thread>>& threads
 		) {
 			thread_size++;
 			active_ = true;
-			deque_.reset();
 			thread_ = std::thread(std::bind(
 				&worksteal_thread::work<TaskQueue>,
 				this,
@@ -73,12 +72,13 @@ namespace coflux {
 			TaskQueue&										task_queue,
 			mode											run_mode,
 			std::atomic_bool&								running,
-			std::atomic<std::size_t>&						thread_size,
+			std::atomic_size_t&								thread_size,
 			std::size_t										basic_thread_size,
 			std::vector<std::unique_ptr<worksteal_thread>>& threads
 		) {
 			thread_local std::mt19937 mt(std::random_device{}());
 			std::size_t n = 0;
+			std::size_t try_steal_spin_count = 0;
 			while (true) {
 				if (!running.load(std::memory_order_acquire)) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					return;
@@ -91,10 +91,20 @@ namespace coflux {
 
 				// try steal from other threads
 				if (Try_steal(run_mode, threads, mt)) {
+					try_steal_spin_count = 0;
+					continue;
+				}
+				else if (++try_steal_spin_count < TryStealSpin) {
 					continue;
 				}
 
-
+				if (task_queue.size_approx() || Has_work_anywhere(threads)) {
+					try_steal_spin_count = 0;
+					std::this_thread::yield(); 
+					continue;
+        		}
+				// std::cout << '\n' << std::this_thread::get_id() << "REACH\n";
+				// continue; 
 				// wait for new tasks
 				switch (run_mode) {
 				case mode::fixed: {
@@ -130,6 +140,15 @@ namespace coflux {
 			return deque_.begin();
 		}
 
+		bool Has_work_anywhere(std::vector<std::unique_ptr<worksteal_thread>>& threads) noexcept {
+			for (auto& t : threads) {
+				if (t->deque_.size_approx() > 0) { 
+					return true;
+				}
+			}
+			return false;
+		}
+
 		void Finish(std::atomic<std::size_t>& thread_size) noexcept {
 			thread_size--;
 			active_ = false;
@@ -148,7 +167,7 @@ namespace coflux {
 			bool stolen = false;
 			for (int i = 0; i < threads_size; i++) {
 				size_t idx = (i + begin_pos) & (threads_size - 1);
-				if (threads[idx].get() == this || (run_mode == mode::cached ? !threads[idx]->active_.load(std::memory_order_relaxed) : false)) {
+				if (threads[idx].get() == this || (run_mode == mode::cached ? !threads[idx]->active() : false)) {
 					continue;
 				}
 				value_type handle = threads[idx]->Steal();

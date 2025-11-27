@@ -5,8 +5,15 @@
 #include <coflux/combiner.hpp>
 #include <coflux/this_coroutine.hpp>
 #include <iostream>
-using pool = coflux::thread_pool_executor<>;
-using sche = coflux::scheduler<pool, coflux::timer_executor>;
+/* exprimental...
+struct pool_option {
+    static constexpr std::size_t WORKSTEAL_LOCAL_QUEUE_CAPACITY = 2;
+};
+
+using pool = coflux::thread_pool_executor<coflux::unbounded_queue<>, pool_option>;
+using group = coflux::worker_group<3>;
+using timer = coflux::timer_executor;
+using sche = coflux::scheduler<pool, group, timer>;
 
 
 // SPSC : 1 Producer, 1 Consumer
@@ -18,25 +25,25 @@ static void BM_Channel_Buffered_SPSC(benchmark::State& state) {
         coflux::channel<int[4096]> chan;
         long long items = state.range(0);
 
-        auto benchmark_task = [](auto env, auto& state, coflux::channel<int[4096]>& chan, long long items) -> coflux::task<void, pool, sche> {
+        auto benchmark_task = [](auto env, auto& state, coflux::channel<int[4096]>& chan, long long items) -> coflux::task<void, group::worker<0>, sche> {
             auto&& ctx = co_await coflux::context();
 
             // Producer
-            auto p = [](auto&&, auto& state, coflux::channel<int[4096]>& chan, long long items) -> coflux::fork<void, pool> {
+            auto p = [](auto&&, auto& state, coflux::channel<int[4096]>& chan, long long items) -> coflux::fork<void, group::worker<1>> {
                 state.ResumeTiming(); 
                 for (long long i = 0; i < items; ++i) {
                     while (!co_await(chan << i)) {
-                        co_await coflux::this_fork::yield();
+                        // co_await coflux::this_fork::yield();
                     }
                 }
                 }(ctx, state, chan, items);
 
             // Consumer
-            auto c = [](auto&&, auto& state, coflux::channel<int[4096]>& chan, long long items) -> coflux::fork<void, pool> {
+            auto c = [](auto&&, auto& state, coflux::channel<int[4096]>& chan, long long items) -> coflux::fork<void, group::worker<2>> {
                 int val;
                 for (long long i = 0; i < items; ++i) {
                     while (!co_await(chan >> val)) {
-                        co_await coflux::this_fork::yield();
+                        // co_await coflux::this_fork::yield();
                     }
                 }
                 state.PauseTiming(); 
@@ -58,7 +65,8 @@ BENCHMARK(BM_Channel_Buffered_SPSC)
 
 // MPMC : N Producers, N Consumers
 static void BM_Channel_Buffered_MPMC(benchmark::State& state) {
-    auto env = coflux::make_environment(sche{});
+
+    auto env = coflux::make_environment(sche{pool(), group(), timer()});
 
     for (auto _ : state) {
         state.PauseTiming();
@@ -155,5 +163,5 @@ static void BM_Channel_Unbuffered_PingPong(benchmark::State& state) {
 BENCHMARK(BM_Channel_Unbuffered_PingPong)
     ->Arg(10000)
     ->Arg(100000)
-    ->Arg(1000000)
     ->UseRealTime();
+*/

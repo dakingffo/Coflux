@@ -5,8 +5,10 @@
 #ifndef COFLUX_EXECUTOR_HPP
 #define COFLUX_EXECUTOR_HPP
 
+#include <iostream>
 #include "concurrent/thread_pool.hpp"
 #include "concurrent/timer_thread.hpp"
+#include "concurrent/worker_thread.hpp"
 
 namespace coflux {
 	class noop_executor {
@@ -130,6 +132,76 @@ namespace coflux {
 
 	private:
 		std::shared_ptr<timer_thread> thread_;
+	};
+
+	namespace detail{
+		template <std::size_t M, typename Group>
+		class worker : public worker_thread<typename Group::queue_type> {
+		public:
+			using owner_group = Group;
+			
+			static constexpr std::size_t pos = M;
+
+		public:
+			worker()  = default;
+			~worker() = default;
+
+			worker(const worker&)            = default;
+			worker(worker&&)                 = default;
+			worker& operator=(const worker&) = default;
+			worker& operator=(worker&&)      = default;
+		
+			void execute(std::coroutine_handle<> handle) {
+				this->submit(handle);
+			}
+		};
+	}
+
+	template <std::size_t N, typename TaskQueue = unbounded_queue<>>
+	class worker_group {
+	public:
+		static_assert(N, "N shoud be larger than zero");
+
+		using queue_type     = TaskQueue;
+
+		template <std::size_t M>
+		using worker       = detail::worker<M, worker_group>;
+		using worker_array = std::array<worker_thread<queue_type>, N>;
+
+	public:
+		worker_group() : workers_(std::make_shared<worker_array>()) {}
+		~worker_group() = default;
+
+		worker_group(const worker_group&)            = default;
+		worker_group(worker_group&&)                 = default;
+		worker_group& operator=(const worker_group&) = default;
+		worker_group& operator=(worker_group&&)      = default;
+
+		void execute(std::coroutine_handle<> handle) noexcept /* Call std::terminate when throw */ {
+			/* To meet the executive concept */
+			No_specified_worker_error();
+		}
+
+		template <std::size_t M>
+		auto& get() noexcept {
+			static_assert(M < N, "worker_index out of range.");
+			return *static_cast<worker<M>*>(&(*workers_)[M]);
+		}
+
+	private:
+		COFLUX_ATTRIBUTES(COFLUX_NORETURN) static void No_specified_worker_error() {
+			throw std::runtime_error("No worker is specified.");
+		}
+
+		std::shared_ptr<worker_array> workers_;
+	};
+
+	template <std::size_t M, typename Group, std::size_t N>
+	struct index<detail::worker<M, Group>, N> : std::integral_constant<std::size_t, N> {
+		using type        = Group;
+		using owner_group = Group;
+
+		static constexpr std::size_t pos = M;
 	};
 
 	template <executive_or_certain_executor Executor>

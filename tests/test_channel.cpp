@@ -8,24 +8,21 @@
 #include <vector>
 #include <thread>
 #include <numeric>
-/*
-// testing...
+/* exprimental...
 using namespace coflux;
-
-// 使用默认线程池
-using pool = thread_pool_executor<>;
-using timer = timer_executor;
-using sche = scheduler<pool>;
 
 // --- 1. SPSC 基础测试 (非阻塞模式) ---
 TEST(ChannelTest, BasicSPSC) {
+    using group = worker_group<3>;
+    using timer = timer_executor;
+    using sche = scheduler<group, timer>;
     auto env = make_environment(sche{});
 
-    auto test = [](auto env) -> task<void, pool, sche> {
+    auto test = [](auto env) -> task<void, group::worker<0>, sche> {
         channel<int[8]> chan; // 有界通道 (非阻塞)
 
         // 生产者
-        auto producer = [](auto&&, channel<int[8]>& chan) -> coflux::fork<void, pool> {
+        auto producer = [](auto&&, channel<int[8]>& chan) -> coflux::fork<void, group::worker<1>> {
             for (int i = 0; i < 100; ++i) {
                 // 自旋重试直到写入成功
                 while (!co_await(chan << i)) {
@@ -35,7 +32,7 @@ TEST(ChannelTest, BasicSPSC) {
             }(co_await context(), chan);
 
         // 消费者
-        auto consumer = [](auto&&, channel<int[8]>& chan) -> coflux::fork<void, pool> {
+        auto consumer = [](auto&&, channel<int[8]>& chan) -> coflux::fork<void, group::worker<2>> {
             int val;
             for (int i = 0; i < 100; ++i) {
                 // 自旋重试直到读取成功
@@ -54,11 +51,14 @@ TEST(ChannelTest, BasicSPSC) {
 
 // --- 2. MPMC 并发测试 (非阻塞测试) ---
 TEST(ChannelTest, ConcurrentMPMC) {
+    using group = worker_group<5>;
+    using timer = timer_executor;
+    using sche = scheduler<group, timer>;
     auto env = make_environment(sche{});
 
-    auto test = [](auto env) -> task<void, pool, sche> {
+    auto test = [](auto env) -> task<void, group<>, sche> {
         // 容量较小，强制触发满/空状态
-        channel<int[512]> chan;
+        channel<int[128]> chan;
         const int N_PRODUCERS = 2;
         const int N_CONSUMERS = 2;
         const int ITEMS_PER_PRODUCER = 20;
@@ -66,7 +66,7 @@ TEST(ChannelTest, ConcurrentMPMC) {
         std::atomic<int> total_consumed = 0;
 
         // 生产者任务
-        auto make_producer = [&chan](auto&&, int id) -> coflux::fork<void, pool> {
+        auto make_producer = [](auto&&, channel<int[128]>& chan, int id) -> coflux::fork<void, pool> {
             for (int i = 0; i < ITEMS_PER_PRODUCER; ++i) {
                 int val = id * 100000 + i;
                 // 遇到满队列则自旋重试
@@ -77,7 +77,7 @@ TEST(ChannelTest, ConcurrentMPMC) {
             };
 
         // 消费者任务
-        auto make_consumer = [&chan, &total_consumed](auto&&) -> coflux::fork<void, pool> {
+        auto make_consumer = [](auto&&, channel<int[128]>& chan, std::atomic<int>& total_consumed) -> coflux::fork<void, pool> {
             int val;
             // 消费定额数据
             for (int i = 0; i < ITEMS_PER_PRODUCER; ++i) {
@@ -93,12 +93,12 @@ TEST(ChannelTest, ConcurrentMPMC) {
         std::vector<coflux::fork<void, pool>> consumers;
 
         auto&& ctx = co_await context();
-        for (int i = 0; i < N_PRODUCERS; ++i) producers.push_back(make_producer(ctx, i));
-        for (int i = 0; i < N_CONSUMERS; ++i) consumers.push_back(make_consumer(ctx));
+        for (int i = 0; i < N_PRODUCERS; ++i) producers.push_back(make_producer(ctx, chan, i));
+        for (int i = 0; i < N_CONSUMERS; ++i) consumers.push_back(make_consumer(ctx, chan, total_consumed));
 
         // 等待所有任务完成
-        for (auto& p : producers) co_await p;
-        for (auto& c : consumers) co_await c;
+        co_await when(producers);
+        co_await when(consumers);
 
         EXPECT_EQ(total_consumed.load(), N_PRODUCERS * ITEMS_PER_PRODUCER);
 
@@ -107,8 +107,12 @@ TEST(ChannelTest, ConcurrentMPMC) {
     test.join();
 }
 
+
 // --- 3. 非阻塞语义测试  ---
 TEST(ChannelTest, NonBlockingSemantics) {
+    using pool = thread_pool_executor<>;
+    using timer = timer_executor;
+    using sche = scheduler<pool, timer>;
     auto env = make_environment(sche{});
 
     auto test = [](auto env) -> task<void, pool, sche> {
@@ -138,6 +142,9 @@ TEST(ChannelTest, NonBlockingSemantics) {
 
 // --- 4. 无缓冲 Channel (Ty[]) 测试 (协程挂起) ---
 TEST(ChannelTest, UnbufferedChannel) {
+    using pool = thread_pool_executor<>;
+    using timer = timer_executor;
+    using sche = scheduler<pool, timer>;
     auto env = make_environment(sche{});
 
     auto test = [](auto env) -> task<void, pool, sche> {
@@ -166,6 +173,9 @@ TEST(ChannelTest, UnbufferedChannel) {
 
 // --- 5. 关闭无缓冲通道测试(有缓冲通道无法手动关闭) ---
 TEST(ChannelTest, CloseChannel) {
+    using pool = thread_pool_executor<>;
+    using timer = timer_executor;
+    using sche = scheduler<pool, timer>;
     // 确保包含 timer 以支持 sleep_for
     auto env = make_environment(sche{});
 
