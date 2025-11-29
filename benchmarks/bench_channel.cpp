@@ -106,10 +106,7 @@ static void BM_Channel_Buffered_MPMC(benchmark::State& state) {
                     }
                     }(ctx, chan, items_per_thread));
             }
-
-            for (auto& f : forks)
-                co_await f;
-            // co_await coflux::when(forks);
+            co_await coflux::when(forks);
 
             state.PauseTiming();
             }(env, state, chan, total_items);

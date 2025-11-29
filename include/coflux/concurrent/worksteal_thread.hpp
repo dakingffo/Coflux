@@ -13,7 +13,7 @@ namespace coflux {
 		fixed, cached
 	};
 
-	template <std::size_t TryStealSpin, std::size_t N, std::size_t Align, std::size_t Idle>
+	template <std::size_t N, std::size_t Align, std::size_t Idle>
 	class worksteal_thread {
 	public:
 		static_assert(  N,			  "N shoud be larger than zero");
@@ -78,7 +78,6 @@ namespace coflux {
 		) {
 			thread_local std::mt19937 mt(std::random_device{}());
 			std::size_t n = 0;
-			std::size_t try_steal_spin_count = 0;
 			while (true) {
 				if (!running.load(std::memory_order_acquire)) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					return;
@@ -91,20 +90,14 @@ namespace coflux {
 
 				// try steal from other threads
 				if (Try_steal(run_mode, threads, mt)) {
-					try_steal_spin_count = 0;
-					continue;
-				}
-				else if (++try_steal_spin_count < TryStealSpin) {
 					continue;
 				}
 
-				if (task_queue.size_approx() || Has_work_anywhere(threads)) {
-					try_steal_spin_count = 0;
+				if (task_queue.size_approx() || Has_work_anywhere(threads)) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 					std::this_thread::yield(); 
 					continue;
         		}
-				// std::cout << '\n' << std::this_thread::get_id() << "REACH\n";
-				// continue; 
+
 				// wait for new tasks
 				switch (run_mode) {
 				case mode::fixed: {

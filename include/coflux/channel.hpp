@@ -118,28 +118,18 @@ namespace coflux {
 			channel_write_awaiter& operator=(const channel_write_awaiter&) = delete;
 			channel_write_awaiter& operator=(channel_write_awaiter&&)	   = default;
 
-			bool await_ready() {
-				if constexpr (Channel::capacity()) {
-					this->success_flag_ = this->channel_->Push_writer(this->value_);
-					return true;
-				}
-				else {
-					return false;
-				}
+			bool await_ready() const noexcept {
+				return false;
 			}
 
 			void await_suspend(std::coroutine_handle<> handle) {
-				if constexpr (!Channel::capacity()) {
-					suspend_base::await_suspend();
-					handle_ = handle;
-					this->channel_->Push_writer(channel_awaiter_proxy(this));
-				}
+				suspend_base::await_suspend();
+				handle_ = handle;
+				this->channel_->Push_writer(channel_awaiter_proxy(this));
 			}
 
 			bool await_resume() noexcept {
-				if constexpr (!Channel::capacity()) {
-					suspend_base::await_resume();
-				}
+				suspend_base::await_resume();
 				return this->success_flag_;
 			}
 
@@ -200,28 +190,18 @@ namespace coflux {
 			channel_read_awaiter& operator=(const channel_read_awaiter&) = delete;
 			channel_read_awaiter& operator=(channel_read_awaiter&&)      = default;
 
-			bool await_ready() {
-				if constexpr (Channel::capacity()) {
-					this->success_flag_ = this->channel_->Push_reader(this->value_);
-					return true;
-				}
-				else {
-					return false;
-				}
+			bool await_ready() const noexcept {
+				return false;
 			}
 
 			void await_suspend(std::coroutine_handle<> handle) {
-				if constexpr (!Channel::capacity()) {
-					suspend_base::await_suspend();
-					handle_ = handle;
-					this->channel_->Push_reader(channel_awaiter_proxy(this));
-				}
+				suspend_base::await_suspend();
+				handle_ = handle;
+				this->channel_->Push_reader(channel_awaiter_proxy(this));
 			}
 
 			bool await_resume() noexcept {
-				if constexpr (!Channel::capacity()) {
-					suspend_base::await_resume();
-				}
+				suspend_base::await_resume();
 				return this->success_flag_;
 			}
 
@@ -316,26 +296,32 @@ namespace coflux {
 			}
 		}
 
-		bool Push_writer(const_reference value) {
+		void Push_writer(detail::channel_awaiter_proxy writer_proxy) {
 			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-				return false;
+				return writer_proxy.resume(false);
 			}
-
-			return queue_->try_push_back(value);
+			auto& writer = writer_proxy.get_writer<channel>();
+			if (queue_->try_push_back(writer.what())) {
+				writer_proxy.resume(true);
+			}
+			else {
+				writer_proxy.resume(false);
+			}
 		}
 
-		bool Push_reader(reference value) {
+		void Push_reader(detail::channel_awaiter_proxy reader_proxy) {
 			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-				return false;
+				reader_proxy.resume(false);
 			}
 
 			std::optional<value_type> opt = queue_->try_pop_front();
 			if (opt) {
-				value = std::move(opt).value();
-				return true;
+				auto& reader = reader_proxy.get_reader<channel>();
+				reader.read(std::move(opt).value());
+				reader_proxy.resume(true);
 			}
 			else {
-				return false;
+				reader_proxy.resume(false);
 			}
 		}
 

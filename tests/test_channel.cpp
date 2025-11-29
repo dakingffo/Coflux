@@ -54,7 +54,7 @@ TEST(ChannelTest, ConcurrentMPMC) {
 
     auto test = [](auto env) -> task<void, pool, sche> {
         // 容量较小，强制触发满/空状态
-        channel<int[128]> chan;
+        channel<int[16]> chan;
         const int N_PRODUCERS = 2;
         const int N_CONSUMERS = 2;
         const int ITEMS_PER_PRODUCER = 100;
@@ -62,7 +62,7 @@ TEST(ChannelTest, ConcurrentMPMC) {
         std::atomic<int> total_consumed = 0;
 
         // 生产者任务
-        auto make_producer = [](auto&&, channel<int[128]>& chan, int id) -> coflux::fork<void, pool> {
+        auto make_producer = [](auto&&, channel<int[16]>& chan, int id) -> coflux::fork<void, pool> {
             for (int i = 0; i < ITEMS_PER_PRODUCER; ++i) {
                 int val = id * 100000 + i;
                 // 遇到满队列则自旋重试
@@ -73,7 +73,7 @@ TEST(ChannelTest, ConcurrentMPMC) {
             };
 
         // 消费者任务
-        auto make_consumer = [](auto&&, channel<int[128]>& chan, std::atomic<int>& total_consumed) -> coflux::fork<void, pool> {
+        auto make_consumer = [](auto&&, channel<int[16]>& chan, std::atomic<int>& total_consumed) -> coflux::fork<void, pool> {
             int val;
             // 消费定额数据
             for (int i = 0; i < ITEMS_PER_PRODUCER; ++i) {
@@ -93,12 +93,8 @@ TEST(ChannelTest, ConcurrentMPMC) {
         for (int i = 0; i < N_CONSUMERS; ++i) consumers.push_back(make_consumer(ctx, chan, total_consumed));
 
         // 等待所有任务完成
-        // co_await when(producers);
-        // co_await when(consumers);
-        for (auto& p : producers)
-            co_await p;
-        for (auto& c : consumers) 
-            co_await c;
+        co_await when(producers);
+        co_await when(consumers);
         EXPECT_EQ(total_consumed.load(), N_PRODUCERS * ITEMS_PER_PRODUCER);
 
         }(env);

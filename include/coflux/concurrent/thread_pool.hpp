@@ -15,8 +15,6 @@
 
 namespace coflux {
 	struct default_thread_pool_constants {
-		static constexpr std::size_t TRY_STEAL_MAX_SPIN_TIMES_BEFORE_BLOCKING = 1024;
-
 		static constexpr std::size_t WORKSTEAL_LOCAL_QUEUE_CAPACITY       	  = 32;
 
 		static constexpr std::size_t ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL           = 64;
@@ -26,15 +24,6 @@ namespace coflux {
 
 	template <typename Constants>
 	struct thread_pool_constant_traits {
-		static constexpr std::size_t TRY_STEAL_MAX_SPIN_TIMES_BEFORE_BLOCKING = []() consteval -> std::size_t {
-			if constexpr (requires{ Constants::TRY_STEAL_MAX_SPIN_TIMES_BEFORE_BLOCKING; }) {
-				return Constants::TRY_STEAL_MAX_SPIN_TIMES_BEFORE_BLOCKING;
-			}
-			else {
-				return default_thread_pool_constants::WORKSTEAL_LOCAL_QUEUE_CAPACITY;
-			}
-		}();
-
 		static constexpr std::size_t WORKSTEAL_LOCAL_QUEUE_CAPACITY = []() consteval -> std::size_t {
 			if constexpr (requires{ Constants::WORKSTEAL_LOCAL_QUEUE_CAPACITY; }) {
 				return Constants::WORKSTEAL_LOCAL_QUEUE_CAPACITY;
@@ -70,7 +59,6 @@ namespace coflux {
 		using constant_traits = thread_pool_constant_traits<Constants>;
 
 		using thread_type    = worksteal_thread<
-			constant_traits::TRY_STEAL_MAX_SPIN_TIMES_BEFORE_BLOCKING,
 			constant_traits::WORKSTEAL_LOCAL_QUEUE_CAPACITY, 
 			constant_traits::ALIGN_OF_LOCAL_QUEUE_HEAD_TAIL, 
 			constant_traits::CACHED_MAX_IDLE_TIME_SECONDS>;
