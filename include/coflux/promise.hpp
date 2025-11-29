@@ -22,8 +22,8 @@ namespace coflux {
 
 		template <bool Ownership>
 		struct promise_fork_base {
-			using handle_type               = std::coroutine_handle<promise_fork_base<false>>;
-			using brother_handle            = std::conditional_t<Ownership, std::monostate, handle_type>;
+			using handle_type				= std::coroutine_handle<promise_fork_base<false>>;
+			using brother_handle			= std::conditional_t<Ownership, std::monostate, handle_type>;
 			using cancellaton_callback_type = std::optional<std::stop_callback<std::function<void()>>>;
 
 			promise_fork_base() {
@@ -84,16 +84,16 @@ namespace coflux {
 			void final_latch_wait() noexcept {
 				final_latch_.wait();
 			}
-			
+
 			void final_latch_count_down() noexcept {
 				final_latch_.count_down();
 			}
 
-			std::latch       final_latch_{1};
+			std::latch       final_latch_{ 1 };
 			std::stop_source stop_source_;
-			handle_type      children_head_   = nullptr;
+			handle_type      children_head_ = nullptr;
 
-			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) brother_handle	brothers_next_{};
+			COFLUX_ATTRIBUTES(COFLUX_NO_UNIQUE_ADDRESS) brother_handle	brothers_next_ {};
 
 			cancellaton_callback_type cancellation_callback_;
 
@@ -105,16 +105,16 @@ namespace coflux {
 			inline static std::atomic_size_t task_counter;
 		};
 #else  
-	};
+		};
 #endif
 
 		template <typename Ty, bool Ownership>
 		struct promise_result_base : public promise_fork_base<Ownership> {
-			using fork_base     = promise_fork_base<Ownership>;
-			using result_proxy  = result<Ty>;
-			using value_type    = typename result_proxy::value_type;
-			using error_type    = typename result_proxy::error_type;
-			using result_type   = Ty;
+			using fork_base		= promise_fork_base<Ownership>;
+			using result_proxy	= result<Ty>;
+			using value_type	= typename result_proxy::value_type;
+			using error_type	= typename result_proxy::error_type;
+			using result_type	= Ty;
 			using callback_type = std::function<void(result_proxy&)>;
 
 			promise_result_base() = default;
@@ -241,11 +241,11 @@ namespace coflux {
 
 		template <bool Ownership>
 		struct promise_result_base<void, Ownership> : public promise_fork_base<Ownership> {
-			using fork_base     = promise_fork_base<Ownership>;
+			using fork_base		= promise_fork_base<Ownership>;
 			using result_proxy  = result<void>;
-			using value_type    = typename result_proxy::value_type;
-			using error_type    = typename result_proxy::error_type;
-			using result_type   = std::monostate;
+			using value_type	= typename result_proxy::value_type;
+			using error_type	= typename result_proxy::error_type;
+			using result_type	= std::monostate;
 			using callback_type = std::function<void(result_proxy&)>;
 
 			promise_result_base() = default;
@@ -371,7 +371,7 @@ namespace coflux {
 			using value_type  = typename yield_proxy::value_type;
 			using error_type  = typename yield_proxy::error_type;
 
-			promise_yield_base()  = default;
+			promise_yield_base() = default;
 			~promise_yield_base() = default;
 
 			void unhandled_exception() noexcept {
@@ -428,303 +428,300 @@ namespace coflux {
 			constexpr Initial initial_suspend() const noexcept { return {}; }
 			constexpr Final   final_suspend()   const noexcept { return {}; }
 		};
-}
 
-	template <typename TaskTy>
-	struct promise;
+		template <typename TaskTy>
+		struct promise;
 
-	template <typename Ty, executive_or_certain_executor Executor, schedulable Scheduler,
-		simple_awaitable Initial, simple_awaitable Final, bool Ownership>
-	struct promise<detail::basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>> final
-		: public detail::promise_base<Ty, Initial, Final, true, Ownership> {
-		using base		       = detail::promise_base<Ty, Initial, Final, true, Ownership>;
-		using result_base      = typename base::result_base;
-		using fork_base        = typename base::fork_base;
-		using value_type       = typename base::value_type;
-		using error_type       = typename base::error_type;
-		using result_proxy     = typename base::result_proxy;
-		using result_type      = typename base::result_type;
-		using task_type        = detail::basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>;
-		using executor_traits  = coflux::executor_traits<Executor>;
-		using executor_type    = typename executor_traits::executor_type;
-		using executor_pointer = typename executor_traits::executor_pointer;
-		using scheduler_type   = Scheduler;
+		template <typename Ty, executive_or_certain_executor Executor, schedulable Scheduler,
+			simple_awaitable Initial, simple_awaitable Final, bool Ownership>
+		struct promise<basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>> final
+			: public promise_base<Ty, Initial, Final, true, Ownership> {
+			using base             = promise_base<Ty, Initial, Final, true, Ownership>;
+			using result_base      = typename base::result_base;
+			using fork_base		   = typename base::fork_base;
+			using value_type       = typename base::value_type;
+			using error_type       = typename base::error_type;
+			using result_proxy     = typename base::result_proxy;
+			using result_type      = typename base::result_type;
+			using task_type        = basic_task<Ty, Executor, Scheduler, Initial, Final, Ownership>;
+			using executor_traits  = detail::executor_traits<Executor>;
+			using executor_type    = typename executor_traits::executor_type;
+			using executor_pointer = typename executor_traits::executor_pointer;
+			using scheduler_type   = Scheduler;
 
-		template <typename ...Args>
-			requires Ownership
-		promise(const environment<Scheduler>& env, Args&&...args)
-			: memo_(env.memo_)
-			, scheduler_(env.scheduler_)
-			, executor_(&scheduler_.template get<Executor>()) {
-		}
-		template <bool ParentOwnership, typename ...Args>
-			requires (!Ownership)
-		promise(const environment_info<ParentOwnership>& env, Args&&...args)
-			: memo_(env.memo_)
-			, scheduler_(env.parent_scheduler_)
-			, executor_(&scheduler_.template get<Executor>()) {
-			env.parent_promise_->fork_child(std::coroutine_handle<detail::promise_fork_base<Ownership>>::from_promise(*this));
-		}
-		template <typename Functor, typename ...Args>
-			requires Ownership
-		promise(Functor&& /* ignored_this */, const environment<Scheduler>& env, Args&&...args)
-			: promise(env, std::forward<Args>(args)...) {
-		}
-		template <typename Functor, bool ParentOwnership, typename ...Args>
-			requires (!Ownership)
-		promise(Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...args)
-			: promise(env, std::forward<Args>(args)...) {
-		}
-		~promise() override = default;
+			template <typename ...Args>
+				requires Ownership
+			promise(const environment<Scheduler>& env, Args&&...args)
+				: memo_(env.memo_)
+				, scheduler_(env.scheduler_)
+				, executor_(&scheduler_.template get<Executor>()) {
+			}
+			template <bool ParentOwnership, typename ...Args>
+				requires (!Ownership)
+			promise(const environment_info<ParentOwnership>& env, Args&&...args)
+				: memo_(env.memo_)
+				, scheduler_(env.parent_scheduler_)
+				, executor_(&scheduler_.template get<Executor>()) {
+				env.parent_promise_->fork_child(std::coroutine_handle<promise_fork_base<Ownership>>::from_promise(*this));
+			}
+			template <typename Functor, typename ...Args>
+				requires Ownership
+			promise(Functor&& /* ignored_this */, const environment<Scheduler>& env, Args&&...args)
+				: promise(env, std::forward<Args>(args)...) {
+			}
+			template <typename Functor, bool ParentOwnership, typename ...Args>
+				requires (!Ownership)
+			promise(Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...args)
+				: promise(env, std::forward<Args>(args)...) {
+			}
+			~promise() override = default;
 
 
-		static void* allocate(std::pmr::memory_resource* memo, std::size_t size) {
-			constexpr std::size_t MAX_ALIGNMENT = alignof(std::max_align_t);
-			constexpr std::size_t resource_ptr_size = sizeof(std::pmr::memory_resource*);
-			std::size_t required_header_size = resource_ptr_size;
-			std::size_t padding = required_header_size % MAX_ALIGNMENT;
-			if (padding != 0) {
-				required_header_size += MAX_ALIGNMENT - padding;
+			static void* allocate(std::pmr::memory_resource* memo, std::size_t size) {
+				constexpr std::size_t MAX_ALIGNMENT = alignof(std::max_align_t);
+				constexpr std::size_t resource_ptr_size = sizeof(std::pmr::memory_resource*);
+				std::size_t required_header_size = resource_ptr_size;
+				std::size_t padding = required_header_size % MAX_ALIGNMENT;
+				if (padding != 0) {
+					required_header_size += MAX_ALIGNMENT - padding;
+				}
+
+				const std::size_t total_size = required_header_size + size;
+				void* allocated_mem = memo->allocate(required_header_size + size);
+				*(static_cast<std::pmr::memory_resource**>(allocated_mem)) = memo;
+
+				return static_cast<std::byte*>(allocated_mem) + required_header_size;
 			}
 
-			const std::size_t total_size = required_header_size + size;
-			void* allocated_mem = memo->allocate(required_header_size + size);
-			*(static_cast<std::pmr::memory_resource**>(allocated_mem)) = memo;
+			static void deallocate(void* ptr, std::size_t size) noexcept {
+				constexpr std::size_t MAX_ALIGNMENT = alignof(std::max_align_t);
+				constexpr std::size_t resource_ptr_size = sizeof(std::pmr::memory_resource*);
+				std::size_t required_header_size = resource_ptr_size;
 
-			return static_cast<std::byte*>(allocated_mem) + required_header_size;
-		}
+				std::size_t padding = required_header_size % MAX_ALIGNMENT;
+				if (padding != 0) {
+					required_header_size += MAX_ALIGNMENT - padding;
+				}
+				const std::size_t total_size = required_header_size + size;
+				void* allocated_mem = static_cast<std::byte*>(ptr) - required_header_size;
+				std::pmr::memory_resource* res = *(static_cast<std::pmr::memory_resource**>(allocated_mem));
 
-		static void deallocate(void* ptr, std::size_t size) noexcept {
-			constexpr std::size_t MAX_ALIGNMENT = alignof(std::max_align_t);
-			constexpr std::size_t resource_ptr_size = sizeof(std::pmr::memory_resource*);
-			std::size_t required_header_size = resource_ptr_size;
-
-			std::size_t padding = required_header_size % MAX_ALIGNMENT;
-			if (padding != 0) {
-				required_header_size += MAX_ALIGNMENT - padding;
+				res->deallocate(allocated_mem, total_size);
 			}
-			const std::size_t total_size = required_header_size + size;
-			void* allocated_mem = static_cast<std::byte*>(ptr) - required_header_size;
-			std::pmr::memory_resource* res = *(static_cast<std::pmr::memory_resource**>(allocated_mem));
 
-			res->deallocate(allocated_mem, total_size);
-		}
+			template <typename ...Args>
+				requires Ownership
+			static void* operator new(size_t size, const environment<Scheduler>& env, Args&&...) {
+				return allocate(env.memo_, size);
+			}
+			template <bool ParentOwnership, typename ...Args>
+				requires (!Ownership)
+			static void* operator new(size_t size, const environment_info<ParentOwnership>& env, Args&&...) {
+				return allocate(env.memo_, size);
+			}
+			template <typename Functor, typename ...Args>
+				requires Ownership
+			static void* operator new(size_t size, Functor&& /* ignored_this */, const environment<Scheduler>& env, Args&&...) {
+				return allocate(env.memo_, size);
+			}
+			template <typename Functor, bool ParentOwnership, typename ...Args>
+				requires (!Ownership)
+			static void* operator new(size_t size, Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...) {
+				return allocate(env.memo_, size);
+			}
 
-		template <typename ...Args>
-			requires Ownership
-		static void* operator new(size_t size, const environment<Scheduler>& env, Args&&...) {
-			return allocate(env.memo_, size);
-		}
-		template <bool ParentOwnership, typename ...Args>
-			requires (!Ownership)
-		static void* operator new(size_t size, const environment_info<ParentOwnership>& env, Args&&...) {
-			return allocate(env.memo_, size);
-		}
-		template <typename Functor, typename ...Args>
-			requires Ownership
-		static void* operator new(size_t size, Functor&& /* ignored_this */, const environment<Scheduler>& env, Args&&...) {
-			return allocate(env.memo_, size);
-		}
-		template <typename Functor, bool ParentOwnership, typename ...Args>
-			requires (!Ownership)
-		static void* operator new(size_t size, Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...) {
-			return allocate(env.memo_, size);
-		}
+			static void operator delete(void* ptr, size_t size) noexcept {
+				deallocate(ptr, size);
+			}
+			template <typename ...Args>
+				requires Ownership
+			static void operator delete(void* ptr, size_t size, const environment<Scheduler>& env, Args&&...) noexcept {
+				deallocate(ptr, size);
+			}
+			template <bool ParentOwnership, typename ...Args>
+				requires (!Ownership)
+			static void operator delete(void* ptr, size_t size, const environment_info<ParentOwnership>& env, Args&&...) noexcept {
+				deallocate(ptr, size);
+			}
+			template <typename Functor, typename ...Args>
+				requires Ownership
+			static void operator delete(void* ptr, size_t size, Functor&& /* ignored_this */, const environment<Scheduler>& env, Args&&...) noexcept {
+				deallocate(ptr, size);
+			}
+			template <typename Functor, bool ParentOwnership, typename ...Args>
+				requires (!Ownership)
+			static void operator delete(void* ptr, size_t size, Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...) noexcept {
+				deallocate(ptr, size);
+			}
 
-		static void operator delete(void* ptr, size_t size) noexcept {
-			deallocate(ptr, size);
-		}
-		template <typename ...Args>
-			requires Ownership
-		static void operator delete(void* ptr, size_t size, const environment<Scheduler>& env, Args&&...) noexcept {
-			deallocate(ptr, size);
-		}
-		template <bool ParentOwnership, typename ...Args>
-			requires (!Ownership)
-		static void operator delete(void* ptr, size_t size, const environment_info<ParentOwnership>& env, Args&&...) noexcept {
-			deallocate(ptr, size);
-		}
-		template <typename Functor, typename ...Args>
-			requires Ownership
-		static void operator delete(void* ptr, size_t size, Functor&& /* ignored_this */, const environment<Scheduler>& env, Args&&...) noexcept {
-			deallocate(ptr, size);
-		}
-		template <typename Functor, bool ParentOwnership, typename ...Args>
-			requires (!Ownership)
-		static void operator delete(void* ptr, size_t size, Functor&& /* ignored_this */, const environment_info<ParentOwnership>& env, Args&&...) noexcept {
-			deallocate(ptr, size);
-		}
+			auto initial_suspend() noexcept {
+				return dispatch_awaiter<Ownership, executor_type>(executor_, &(this->get_status()));
+			}
 
-		auto initial_suspend() noexcept {
-			return detail::dispatch_awaiter<Ownership, executor_type>(executor_, &(this->get_status()));
-		}
+			task_type get_return_object() noexcept {
+				return task_type(std::coroutine_handle<promise>::from_promise(*this));
+			}
 
-		task_type get_return_object() noexcept {
-			return task_type(std::coroutine_handle<promise>::from_promise(*this));
-		}
+			auto await_transform(get_scheduler_t get_scheduler_request) noexcept {
+				return get_scheduler_awaiter<scheduler_type>{};
+			}
 
-		auto await_transform(detail::get_scheduler_t get_scheduler_request) noexcept {
-			return detail::get_scheduler_awaiter<scheduler_type>{};
-		}
+			auto await_transform(context_t context_request) noexcept {
+				return context_awaiter<Ownership>{this, memo_, scheduler<void>(scheduler_)};
+			}
 
-		auto await_transform(detail::context_t context_request) noexcept {
-			return detail::context_awaiter<Ownership>{this, memo_, scheduler<void>(scheduler_)};
-		}
+			template <typename Rep, typename Period>
+			auto await_transform(const std::chrono::duration<Rep, Period>& sleep_time) noexcept {
+				return sleep_awaiter<Executor>(/* Capture executor in awaite_suspend */
+					std::chrono::duration_cast<std::chrono::milliseconds>(sleep_time), &(this->get_status()));
+			}
 
-		template <typename Rep, typename Period>
-		auto await_transform(const std::chrono::duration<Rep, Period>& sleep_time) noexcept {
-			return detail::sleep_awaiter<Executor>(/* Capture executor in awaite_suspend */
-				std::chrono::duration_cast<std::chrono::milliseconds>(sleep_time), &(this->get_status()));
-		}
+			template <typename Rep, typename Period>
+			auto await_transform(const sleep_t<Ownership, Rep, Period>& sleep_request) noexcept {
+				return await_transform<Rep, Period>(sleep_request.dur_);
+			}
 
-		template <typename Rep, typename Period>
-		auto await_transform(const detail::sleep_t<Ownership, Rep, Period>& sleep_request) noexcept {
-			return await_transform<Rep, Period>(sleep_request.dur_);
-		}
+			auto await_transform(yield_t<Ownership> yield_request) noexcept {
+				return initial_suspend();
+			}
 
-		auto await_transform(detail::yield_t<Ownership> yield_request) noexcept {
-			return initial_suspend();
-		}
+			auto await_transform(cancel_t<Ownership> cancel_request) noexcept {
+				result_base::cancel();
+				return final_awaiter{};
+			}
 
-		auto await_transform(detail::cancel_t<Ownership> cancel_request) noexcept {
-			result_base::cancel();
-			return detail::final_awaiter{};
-		}
-
-		template <awaitable Awaiter>
-		decltype(auto) await_transform(Awaiter&& awaiter) noexcept {
-			this->get_status() = suspending;
-			return std::forward<Awaiter>(awaiter);
-		}
-
-		template <awaitable Awaiter>
-			requires std::is_base_of_v<detail::suspend_tag<false>, std::remove_reference_t<Awaiter>>
-		    && ((std::is_base_of_v<detail::ownership_tag<Ownership>, std::remove_reference_t<Awaiter>>)
-			|| (std::is_base_of_v<detail::ownership_unlimited_tag, std::remove_reference_t<Awaiter>>))
+			template <awaitable Awaiter>
 			decltype(auto) await_transform(Awaiter&& awaiter) noexcept {
-			return std::forward<Awaiter>(awaiter);
-		}
+				this->get_status() = suspending;
+				return std::forward<Awaiter>(awaiter);
+			}
 
-		template <awaitable Awaiter>
-			requires std::is_base_of_v<detail::suspend_tag<true>, std::remove_reference_t<Awaiter>>
-		    && ((std::is_base_of_v<detail::ownership_tag<Ownership>, std::remove_reference_t<Awaiter>>) 
-			|| (std::is_base_of_v<detail::ownership_unlimited_tag, std::remove_reference_t<Awaiter>>))
-			decltype(auto) await_transform(Awaiter&& awaiter) noexcept {
-			awaiter.set_waiter_status_ptr(&(this->get_status()));
-			return std::forward<Awaiter>(awaiter);
-		}
+			template <awaitable Awaiter>
+				requires std::is_base_of_v<suspend_tag<false>, std::remove_reference_t<Awaiter>>
+			&& ((std::is_base_of_v<ownership_tag<Ownership>, std::remove_reference_t<Awaiter>>)
+				|| (std::is_base_of_v<ownership_unlimited_tag, std::remove_reference_t<Awaiter>>))
+				decltype(auto) await_transform(Awaiter&& awaiter) noexcept {
+				return std::forward<Awaiter>(awaiter);
+			}
 
-		template <task_rvalue Task>
-		auto await_transform(Task&& co_task) noexcept {
-			return detail::awaiter<Task, executor_type>(std::move(co_task), executor_, &(this->get_status()));
-		}
+			template <awaitable Awaiter>
+				requires std::is_base_of_v<suspend_tag<true>, std::remove_reference_t<Awaiter>>
+			&& ((std::is_base_of_v<ownership_tag<Ownership>, std::remove_reference_t<Awaiter>>)
+				|| (std::is_base_of_v<ownership_unlimited_tag, std::remove_reference_t<Awaiter>>))
+				decltype(auto) await_transform(Awaiter&& awaiter) noexcept {
+				awaiter.set_waiter_status_ptr(&(this->get_status()));
+				return std::forward<Awaiter>(awaiter);
+			}
 
-		template <fork_lrvalue Fork>
-		auto await_transform(Fork&& co_fork) noexcept {
-			return detail::awaiter<Fork, executor_type>(std::forward<Fork>(co_fork), executor_, &(this->get_status()));
-		}
+			template <task_rvalue Task>
+			auto await_transform(Task&& co_task) noexcept {
+				return awaiter<Task, executor_type>(std::move(co_task), executor_, &(this->get_status()));
+			}
 
-		template <typename C>
-		auto await_transform(detail::awaitable_closure<C>&& closure) {
-			return std::move(closure).transform(executor_, &(this->get_status()));
-		}
+			template <fork_lrvalue Fork>
+			auto await_transform(Fork&& co_fork) noexcept {
+				return awaiter<Fork, executor_type>(std::forward<Fork>(co_fork), executor_, &(this->get_status()));
+			}
 
-		std::pmr::memory_resource* memo_;
-		scheduler_type			   scheduler_;
-		executor_pointer		   executor_;
-	};
+			template <typename C>
+			auto await_transform(awaitable_closure<C>&& closure) {
+				return std::move(closure).transform(executor_, &(this->get_status()));
+			}
 
-	template <typename Ty>
-	class generator;
+			std::pmr::memory_resource* memo_;
+			scheduler_type			   scheduler_;
+			executor_pointer		   executor_;
+		};
 
-	template <typename Ty>
-	struct promise<generator<Ty>> final
-		: public detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false> {
-		using base           = detail::promise_base<Ty, std::suspend_always, std::suspend_always, false, false>;
-		using value_type     = typename base::value_type;
-		using yield_proxy    = typename base::yield_proxy;
-		using generator_type = generator<Ty>;
+		template <typename Ty>
+		struct promise<generator<Ty>> final
+			: public promise_base<Ty, std::suspend_always, std::suspend_always, false, false> {
+			using base           = promise_base<Ty, std::suspend_always, std::suspend_always, false, false>;
+			using value_type     = typename base::value_type;
+			using yield_proxy    = typename base::yield_proxy;
+			using generator_type = generator<Ty>;
 
-		promise() : next_(nullptr) {
-			active_ = this;
-		}
-		~promise() {
-			tidy();
-		}
+			promise() : next_(nullptr) {
+				active_ = this;
+			}
+			~promise() {
+				tidy();
+			}
 
-		generator_type get_return_object() noexcept {
-			return generator_type(std::coroutine_handle<promise>::from_promise(*this));
-		}
+			generator_type get_return_object() noexcept {
+				return generator_type(std::coroutine_handle<promise>::from_promise(*this));
+			}
 
-		status get_status() noexcept {
-			return this->product_.get_status();
-		}
+			status get_status() noexcept {
+				return this->product_.get_status();
+			}
 
-		status get_active_status() noexcept {
-			return this->active_->get_status();
-		}
+			status get_active_status() noexcept {
+				return this->active_->get_status();
+			}
 
-		bool has_value() noexcept {
-			return get_status() == suspending;
-		}
+			bool has_value() noexcept {
+				return get_status() == suspending;
+			}
 
-		using base::yield_value;
+			using base::yield_value;
 
-		std::suspend_always yield_value(generator_type&& subgenerator) {
-			promise* new_active = &(subgenerator.handle_.promise());
-			subgenerator.handle_ = nullptr;
+			std::suspend_always yield_value(generator_type&& subgenerator) {
+				promise* new_active = &(subgenerator.handle_.promise());
+				subgenerator.handle_ = nullptr;
 
-			new_active->next_ = this;
-			this->active_ = new_active;
-			this->product_.st_ = unprepared;
+				new_active->next_ = this;
+				this->active_ = new_active;
+				this->product_.st_ = unprepared;
 
-			return {};
-		}
+				return {};
+			}
 
-		void resume_active() {
-			while (get_status() != completed /* If fail, break out by throw*/) {
-				std::coroutine_handle<promise>::from_promise(*active_).resume();
-				switch (get_active_status()) {
-				case unprepared:
-					this->active_ = this->active_->active_;
-					break;
-				case suspending:
-					if (this != this->active_) {
-						this->product_.replace_value(std::move(*active_).get_value());
+			void resume_active() {
+				while (get_status() != completed /* If fail, break out by throw*/) {
+					std::coroutine_handle<promise>::from_promise(*active_).resume();
+					switch (get_active_status()) {
+					case unprepared:
+						this->active_ = this->active_->active_;
+						break;
+					case suspending:
+						if (this != this->active_) {
+							this->product_.replace_value(std::move(*active_).get_value());
+						}
+						return;
+					case failed:
+						tidy_then_throw(std::move(*active_).get_error());
+						break;
+					case completed:
+						if (this != this->active_) {
+							promise* old_active = this->active_;
+							this->active_ = old_active->next_;
+							this->active_->active_ = this->active_;
+							std::coroutine_handle<promise>::from_promise(*old_active).destroy();
+						}
+						break;
 					}
-					return;
-				case failed:
-					tidy_then_throw(std::move(*active_).get_error());
-					break;
-				case completed:
-					if (this != this->active_) {
-						promise* old_active = this->active_;
-						this->active_ = old_active->next_;
-						this->active_->active_ = this->active_;
-						std::coroutine_handle<promise>::from_promise(*old_active).destroy();
-					}
-					break;
 				}
 			}
-		}
 
-		void tidy() {
-			while (this != this->active_) {
-				promise* old_active = this->active_;
-				this->active_ = this->active_->next_;
-				this->active_->active_ = this->active_;
-				std::coroutine_handle<promise>::from_promise(*old_active).destroy();
+			void tidy() {
+				while (this != this->active_) {
+					promise* old_active = this->active_;
+					this->active_ = this->active_->next_;
+					this->active_->active_ = this->active_;
+					std::coroutine_handle<promise>::from_promise(*old_active).destroy();
+				}
 			}
-		}
 
-		void tidy_then_throw(std::exception_ptr e) {
-			tidy();
-			std::rethrow_exception(e);
-		}
+			void tidy_then_throw(std::exception_ptr e) {
+				tidy();
+				std::rethrow_exception(e);
+			}
 
-		promise* active_;
-		promise* next_;
-	};
+			promise* active_;
+			promise* next_;
+		};
+	}
 }
 
 #endif // !COFLUX_PROMISE_HPP

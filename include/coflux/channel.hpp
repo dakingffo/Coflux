@@ -13,10 +13,13 @@ namespace coflux {
 	namespace detail {
 		template <typename Channel>
 		struct channel_reader;
+
 		template <typename Channel, executive Executor>
 		struct channel_read_awaiter;
+
 		template <typename Channel>
 		struct channel_writer;
+
 		template <typename Channel, executive Executor>
 		struct channel_write_awaiter;
 
@@ -118,8 +121,8 @@ namespace coflux {
 			channel_write_awaiter& operator=(const channel_write_awaiter&) = delete;
 			channel_write_awaiter& operator=(channel_write_awaiter&&)	   = default;
 
-			bool await_ready() const noexcept {
-				return false;
+			bool await_ready() noexcept {
+				return this->channel_->Try_write(this->value_, this->success_flag_);
 			}
 
 			void await_suspend(std::coroutine_handle<> handle) {
@@ -190,8 +193,8 @@ namespace coflux {
 			channel_read_awaiter& operator=(const channel_read_awaiter&) = delete;
 			channel_read_awaiter& operator=(channel_read_awaiter&&)      = default;
 
-			bool await_ready() const noexcept {
-				return false;
+			bool await_ready() noexcept {
+				return this->channel_->Try_read(this->value_, this->success_flag_);
 			}
 
 			void await_suspend(std::coroutine_handle<> handle) {
@@ -212,7 +215,6 @@ namespace coflux {
 
 			std::coroutine_handle<> handle_;
 		};
-
 	}
 
 	template <typename TyN>
@@ -296,6 +298,29 @@ namespace coflux {
 			}
 		}
 
+		bool Try_write(const_reference value, bool& success_flag_) {
+			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+				return false;
+			}
+
+			return success_flag_ = queue_->try_push_back(value);
+		}
+
+		bool Try_read(reference value, bool& success_flag_)  {
+			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+				return false;
+			}
+
+			std::optional<value_type> opt = queue_->try_pop_front();
+			if (opt) {
+				value = std::move(opt).value();
+				return success_flag_ = true;
+			}
+			else {
+				return success_flag_ = false;
+			}
+		}
+
 		void Push_writer(detail::channel_awaiter_proxy writer_proxy) {
 			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				return writer_proxy.resume(false);
@@ -345,7 +370,7 @@ namespace coflux {
 		using reference       = Ty&;
 		using const_reference = const Ty&;
 
-		using awaiter_queue_type = std::deque<detail::channel_awaiter_proxy>;
+		using awaiter_queue_type = unsync_ring<detail::channel_awaiter_proxy>;
 
 	public:
 		static constexpr size_type capacity() noexcept {
@@ -404,6 +429,14 @@ namespace coflux {
 		template <typename Channel, executive Executor>
 		friend class detail::channel_read_awaiter;
 
+		constexpr bool Try_write(const_reference value, bool&) const noexcept {
+			return false;
+		}
+
+		constexpr bool Try_read(reference value, bool&) const noexcept {
+			return false;
+		}
+
 		void Push_writer(detail::channel_awaiter_proxy writer_proxy) {
 			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				writer_proxy.resume(false);
@@ -420,7 +453,7 @@ namespace coflux {
 				writer_proxy.resume(true);
 			}
 			else {
-				writers_.emplace_back(std::move(writer_proxy));
+				writers_.push_back(std::move(writer_proxy));
 			}
 		}
 
@@ -440,7 +473,7 @@ namespace coflux {
 				writer_proxy.resume(true);
 			}
 			else {
-				readers_.emplace_back(std::move(reader_proxy));
+				readers_.push_back(std::move(reader_proxy));
 			}
 		}
 
@@ -449,8 +482,8 @@ namespace coflux {
 			awaiter_queue_type readers_to_resume;
 			{
 				std::lock_guard<std::mutex> guard(mtx_);
-				writers_to_resume.swap(writers_);
-				readers_to_resume.swap(readers_);
+				swap(writers_to_resume, writers_);
+				swap(readers_to_resume, readers_);
 			}
 			for (auto& writer_proxy : writers_to_resume) {
 				writer_proxy.resume(false);

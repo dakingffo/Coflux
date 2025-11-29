@@ -13,7 +13,7 @@ namespace coflux {
 
         template <executive Executor>
         struct maysuspend_awaiter_base : public suspend_tag<true> {
-            using executor_traits  = ::coflux::executor_traits<Executor>;
+            using executor_traits  = detail::executor_traits<Executor>;
             using executor_type    = typename executor_traits::executor_type;
             using executor_pointer = typename executor_traits::executor_pointer;
 

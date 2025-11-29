@@ -204,41 +204,43 @@ namespace coflux {
 		static constexpr std::size_t pos = M;
 	};
 
-	template <executive_or_certain_executor Executor>
-	struct executor_type_traits;
+	namespace detail {
+		template <executive_or_certain_executor Executor>
+		struct executor_type_traits;
 
-	template <executive Executor>
-	struct executor_type_traits<Executor> {
-		using executor_type    = Executor;
-		using executor_pointer = Executor*;
-	};
+		template <executive Executor>
+		struct executor_type_traits<Executor> {
+			using executor_type    = Executor;
+			using executor_pointer = Executor*;
+		};
 
-	template <certain_executor Idx>
-	struct executor_type_traits<Idx> {
-		using executor_type    = typename Idx::type;
-		using executor_pointer = typename Idx::type*;
-	};
+		template <certain_executor Idx>
+		struct executor_type_traits<Idx> {
+			using executor_type    = typename Idx::type;
+			using executor_pointer = typename Idx::type*;
+		};
 
-	template <executive_or_certain_executor Executor>
-	struct executor_traits : executor_type_traits<Executor> {
-		using type_traits      = executor_type_traits<Executor>;
-		using executor_type    = typename type_traits::executor_type;
-		using executor_pointer = typename type_traits::executor_pointer;
+		template <executive_or_certain_executor Executor>
+		struct executor_traits : executor_type_traits<Executor> {
+			using type_traits      = executor_type_traits<Executor>;
+			using executor_type    = typename type_traits::executor_type;
+			using executor_pointer = typename type_traits::executor_pointer;
 
-		static void execute(executor_pointer exec, std::coroutine_handle<> handle) {
-			if constexpr (executive_handle<executor_type>) {
-				exec->execute(handle);
+			static void execute(executor_pointer exec, std::coroutine_handle<> handle) {
+				if constexpr (executive_handle<executor_type>) {
+					exec->execute(handle);
+				}
+				else {
+					exec->execute([handle]() { handle.resume(); });
+				}
 			}
-			else {
-				exec->execute([handle]() { handle.resume(); });
-			}
-		}
 
-		template <typename Func, typename...Args>
-		static void execute(executor_pointer exec, Func&& func, Args&&...args) {
-			exec->execute(std::forward<Func>(func), std::forward<Args>(args)...);
-		}
-	};
+			template <typename Func, typename...Args>
+			static void execute(executor_pointer exec, Func&& func, Args&&...args) {
+				exec->execute(std::forward<Func>(func), std::forward<Args>(args)...);
+			}
+		};
+	}
 }
 
 #endif // !COFLUX_EXECUTOR_HPP

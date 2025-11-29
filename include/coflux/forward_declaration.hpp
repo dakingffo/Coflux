@@ -226,6 +226,9 @@ namespace coflux {
 	template <typename Ty>
 	class fork_view;
 
+	template <typename Ty>
+	class generator;
+
 	struct cancel_exception;
 
 	template <typename Ty>
@@ -374,7 +377,7 @@ namespace coflux {
 	concept task_like_range = fork_lrvalue_range<TaskRange> || task_rvalue_range<TaskRange>;
 
 #undef COFLUX_EXECUTABLE_CONCEPTS
-
+	
 	namespace detail {
 		template <bool Ownership>
 		struct promise_fork_base;
@@ -387,6 +390,9 @@ namespace coflux {
 
 		template <typename Ty, simple_awaitable Initial, simple_awaitable Final, bool TaskLikePromise, bool Ownership>
 		struct promise_base;
+
+		template <typename Ty>
+		struct promise;
 	}
 }
 

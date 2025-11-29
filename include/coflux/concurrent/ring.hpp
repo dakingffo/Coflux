@@ -94,7 +94,7 @@ namespace coflux {
 			: head_(0), tail_(0), size_(0), vec_(alloc) {
 			vec_.resize(size_upper(std::max(count, initial_capacity)));
 		}
-		explicit unsync_ring(const allocator_type& alloc = allocator_type())
+		explicit unsync_ring(const allocator_type& alloc)
 			: head_(0), tail_(0), size_(0), vec_(initial_capacity, alloc) {}
 		~unsync_ring() = default;
 

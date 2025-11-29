@@ -109,7 +109,7 @@ namespace coflux {
                 suspend_base::await_suspend();
                 auto& sch = handle.promise().scheduler_;
                 suspend_base::set_executor_ptr(&sch.template get<Executor>());
-                coflux::executor_traits<timer_executor>::execute(
+                executor_traits<timer_executor>::execute(
                     &sch.template get<timer_executor>(),
                     [this, handle, target_exec = sch.template get<Executor>()]() mutable { 
                         suspend_base::execute(&target_exec, handle);

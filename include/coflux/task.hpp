@@ -302,7 +302,7 @@ namespace coflux {
 	}
 
 	template <typename Ty, executive_or_certain_executor Executor = noop_executor,
-		schedulable Scheduler = scheduler<typename executor_traits<Executor>::executor_type>>
+		schedulable Scheduler = scheduler<typename detail::executor_traits<Executor>::executor_type>>
 		using task = detail::basic_task<Ty, Executor, Scheduler, std::suspend_never, detail::final_awaiter, true>;
 
 	template <typename Ty, executive_or_certain_executor Executor = noop_executor>

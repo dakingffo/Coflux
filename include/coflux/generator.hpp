@@ -71,7 +71,7 @@ namespace coflux {
 	public:
 		static_assert(std::is_object_v<Ty>, "generator must be instantiated by the object type");
 
-		using promise_type     = promise<generator<Ty>>;
+		using promise_type     = detail::promise<generator<Ty>>;
 		using value_type       = typename promise_type::value_type;
 		using coroutine_handle = std::coroutine_handle<promise_type>;
 
