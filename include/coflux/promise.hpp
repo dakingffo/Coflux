@@ -592,7 +592,7 @@ namespace coflux {
 
 			template <awaitable Awaiter>
 			decltype(auto) await_transform(Awaiter&& awaiter) noexcept {
-				this->get_status() = suspending;
+				this->get_status() = extern_suspending;
 				return std::forward<Awaiter>(awaiter);
 			}
 

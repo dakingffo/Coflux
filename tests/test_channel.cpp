@@ -93,8 +93,12 @@ TEST(ChannelTest, ConcurrentMPMC) {
         for (int i = 0; i < N_CONSUMERS; ++i) consumers.push_back(make_consumer(ctx, chan, total_consumed));
 
         // 等待所有任务完成
-        co_await when(producers);
-        co_await when(consumers);
+        for (auto& p : producers)
+            co_await p;
+        for (auto& c : consumers)
+            co_await c;
+        // co_await when(producers);
+        // co_await when(consumers);
         EXPECT_EQ(total_consumed.load(), N_PRODUCERS * ITEMS_PER_PRODUCER);
 
         }(env);
@@ -209,7 +213,7 @@ TEST(ChannelTest, CloseChannel) {
             // 2. 模拟延迟
             // 让消费者有时间进入第二次 await (挂起状态)
             // 这样我们才能测试 close() 是否能正确唤醒它
-            co_await coflux::this_fork::sleep_for(std::chrono::milliseconds(10));
+            co_await coflux::this_fork::sleep_for(std::chrono::milliseconds(100));
             
             // 3. 关闭通道
             // 这应该触发 Clean()，唤醒所有在此通道上挂起的 reader/writer

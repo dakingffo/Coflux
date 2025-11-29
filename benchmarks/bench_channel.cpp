@@ -58,7 +58,7 @@ BENCHMARK(BM_Channel_Buffered_SPSC)
 
 // MPMC : N Producers, N Consumers
 static void BM_Channel_Buffered_MPMC(benchmark::State& state) {
-    using pool = coflux::thread_pool_executor<coflux::unbounded_queue<>>;
+    using pool = coflux::thread_pool_executor<>;
     using group = coflux::worker_group<5>;
     using sche = coflux::scheduler<pool, group>;
     auto env = coflux::make_environment(sche{pool(4), group()});

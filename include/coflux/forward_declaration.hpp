@@ -61,14 +61,15 @@
 
 namespace coflux {
 	enum status : char {
-		running,		// coroutine is running
-		suspending,	    // coroutine is suspending
-		completed,		// coroutine co_returned a value
-		failed,			// coroutine throw an exception
-		cancelled,		// coroutine is cancelled
-		handled,		// coroutine exception_ptr is moved
-		unprepared,		// coroutine frame is not prepared / generator has not yield a value
-		invalid			// handle is nullptr
+		running,	       	// coroutine is running
+		suspending,	       	// coroutine is suspended on internal components
+		extern_suspending, 	// coroutine is suspended on external components (co_await std::suspend_always{};)
+		completed,		 	// coroutine co_returned a value
+		failed,			 	// coroutine throw an exception
+		cancelled,		 	// coroutine is cancelled
+		handled,		 	// coroutine exception_ptr is moved
+		unprepared,		 	// coroutine frame is not prepared / generator has not yield a value
+		invalid			 	// handle is nullptr
 	};
 
 	namespace detail {}

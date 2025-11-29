@@ -73,19 +73,19 @@ namespace coflux {
 	
 	// template <typename TaskQueue = moodycamel::BlockingConcurrentQueue<std::coroutine_handle<>>, typename Contants = default_thread_pool_constants>
 	// coflux support moodycamel::BlockingConcurrentQueue as template argument of thread_pool, but we don't provide it directly.
-	template <typename TaskQueue = unbounded_queue<>, typename Contants = default_thread_pool_constants>
+	template <typename TaskQueue = concurrent::unbounded_queue<>, typename Contants = concurrent::default_thread_pool_constants>
 	class thread_pool_executor {
 	public:
-		using thread_pool = coflux::thread_pool<TaskQueue, Contants>;
+		using thread_pool = concurrent::thread_pool<TaskQueue, Contants>;
 		using queue_type  = typename thread_pool::queue_type;
 
 	public:
 		template <typename...Args>
 		thread_pool_executor(
-			std::size_t basic_thread_size	  = std::thread::hardware_concurrency(),
-			mode        run_mode			  = mode::fixed,
-			std::size_t thread_size_threshold = std::thread::hardware_concurrency() * 2,
-			Args&&...   args)
+			std::size_t      basic_thread_size	   = std::thread::hardware_concurrency(),
+			concurrent::mode run_mode			   = concurrent::mode::fixed,
+			std::size_t      thread_size_threshold = std::thread::hardware_concurrency() * 2,
+			Args&&...        args)
 			: pool_(std::make_shared<thread_pool>(
 				basic_thread_size, run_mode, thread_size_threshold, std::forward<Args>(args)...)) {}
 		~thread_pool_executor() = default;
@@ -109,14 +109,14 @@ namespace coflux {
 
 	class timer_executor {
 	public:
-		using clock      = typename timer_thread::clock;
-		using time_point = typename timer_thread::time_point;
-		using duration   = typename timer_thread::duration;
-		using package    = typename timer_thread::package;
+		using clock      = typename concurrent::timer_thread::clock;
+		using time_point = typename concurrent::timer_thread::time_point;
+		using duration   = typename concurrent::timer_thread::duration;
+		using package    = typename concurrent::timer_thread::package;
 
 	public:
 		timer_executor()
-			: thread_(std::make_shared<timer_thread>()) {
+			: thread_(std::make_shared<concurrent::timer_thread>()) {
 		}
 		~timer_executor() = default;
 
@@ -131,12 +131,12 @@ namespace coflux {
 		}
 
 	private:
-		std::shared_ptr<timer_thread> thread_;
+		std::shared_ptr<concurrent::timer_thread> thread_;
 	};
 
 	namespace detail{
 		template <std::size_t M, typename Group>
-		class worker : public worker_thread<typename Group::queue_type> {
+		class worker : public ::coflux::concurrent::worker_thread<typename Group::queue_type> {
 		public:
 			using owner_group = Group;
 			
@@ -157,7 +157,7 @@ namespace coflux {
 		};
 	}
 
-	template <std::size_t N, typename TaskQueue = unbounded_queue<>>
+	template <std::size_t N, typename TaskQueue = concurrent::unbounded_queue<>>
 	class worker_group {
 	public:
 		static_assert(N, "N shoud be larger than zero");
@@ -166,7 +166,7 @@ namespace coflux {
 
 		template <std::size_t M>
 		using worker       = detail::worker<M, worker_group>;
-		using worker_array = std::array<worker_thread<queue_type>, N>;
+		using worker_array = std::array<concurrent::worker_thread<queue_type>, N>;
 
 	public:
 		worker_group() : workers_(std::make_shared<worker_array>()) {}

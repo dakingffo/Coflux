@@ -233,7 +233,7 @@ namespace coflux {
 		using reference		  = Ty&;
 		using const_reference = const Ty&;
 
-		using value_queue_type   = std::unique_ptr<MPMC_ring<value_type, N, 64>>;
+		using value_queue_type   = std::unique_ptr<concurrent::MPMC_ring<value_type, N, 64>>;
 
 	public:
 		static constexpr size_type capacity() noexcept {
@@ -279,7 +279,7 @@ namespace coflux {
 		bool Launch() noexcept {
 			bool expected = false;
 			if (active_.compare_exchange_strong(expected, true, std::memory_order_seq_cst, std::memory_order_relaxed)) {
-				queue_ = std::make_unique<MPMC_ring<value_type, N, 64>>();
+				queue_ = std::make_unique<concurrent::MPMC_ring<value_type, N, 64>>();
 				return true;
 			}
 			else {
@@ -370,7 +370,7 @@ namespace coflux {
 		using reference       = Ty&;
 		using const_reference = const Ty&;
 
-		using awaiter_queue_type = unsync_ring<detail::channel_awaiter_proxy>;
+		using awaiter_queue_type = std::deque<detail::channel_awaiter_proxy>;
 
 	public:
 		static constexpr size_type capacity() noexcept {
@@ -482,8 +482,8 @@ namespace coflux {
 			awaiter_queue_type readers_to_resume;
 			{
 				std::lock_guard<std::mutex> guard(mtx_);
-				swap(writers_to_resume, writers_);
-				swap(readers_to_resume, readers_);
+				writers_to_resume.swap(writers_);
+				readers_to_resume.swap(readers_);
 			}
 			for (auto& writer_proxy : writers_to_resume) {
 				writer_proxy.resume(false);
