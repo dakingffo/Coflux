@@ -7,9 +7,12 @@
 #include <coflux/task.hpp>
 #include <coflux/generator.hpp>
 // --- 通用设置 (Common Setup) ---
+using noop = coflux::noop_executor;
 using pool = coflux::thread_pool_executor<>;
+using group = coflux::worker_group<2>;
 using timer = coflux::timer_executor;
 using sche = coflux::scheduler<pool, timer>;
+using sche2 = coflux::scheduler<noop, group, pool>;
 
 // 模拟异步读取网络请求
 coflux::fork<std::string, pool> async_read_request(auto&&, int client_id) {
@@ -220,8 +223,84 @@ int main() {
         // RAII 析构 等待所有任务（包括未被 co_await 的）完成
     }
 
-    // --- 5. 演示：生成器 (Loop & Recursion) ---
-    std::cout << "\n--- 5. Demo: Generators (Loop & Recursion) ---\n";
+    // --- 5. 演示：执行线程组 (Worker Group) ---
+    std::cout << "\n--- 5. Demo: thread executor group (Worker Group) ---\n";
+    {
+        auto env = coflux::make_environment<sche2>();
+
+		auto demo_task = [](auto env) -> coflux::task<void, noop, sche2> { // 使用 noop 作为起始执行器
+			auto& sch = co_await coflux::get_scheduler();
+            std::cout << "Initial thread: " << std::this_thread::get_id() << "\n";
+            co_await coflux::this_task::dispatch(sch.get<group::worker<0>>());
+            // 切换到 worker group 的第0号工作线程执行后续任务
+            std::cout << "After dispatch to worker 0, thread: " << std::this_thread::get_id() << "\n";
+            
+            auto&& ctx = co_await coflux::context();
+            auto fork_on_worker1 = [](auto&&, int id) -> coflux::fork<void, group::worker<1>> {
+                std::cout << "  [Worker 1] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
+                co_return;
+				};
+            auto fork_on_worker0 = [](auto&&, int id) -> coflux::fork<void, group::worker<0>> {
+                std::cout << "  [Worker 0] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
+                co_return;
+                };
+
+            for (int i = 0; i < 5; i++) {
+                if (i & 1) {
+                    co_await (fork_on_worker1(ctx, i) | coflux::after(sch.get<group::worker<1>>()));
+					std::cout << "  [Main Task] on thread " << std::this_thread::get_id() << "\n";
+					// fork_on_worker1 在 worker 1 上执行, 恢复task后也继续在 worker 1 上执行
+                }
+                else {
+					co_await (fork_on_worker0(ctx, i) | coflux::after(sch.get<group::worker<0>>()));
+                    std::cout << "  [Main Task] on thread " << std::this_thread::get_id() << "\n";
+					// fork_on_worker0 在 worker 0 上执行, 恢复task后也继续在 worker 0 上执行
+                }
+            }
+
+            }(env);
+    }
+
+    // --- 6. 演示：channel<int[N]> ---
+    std::cout << "\n--- 6. Demo: channel<int[N]> ---\n";
+    {
+        auto env = coflux::make_environment<sche2>();
+
+        auto demo_task = [](auto env) -> coflux::task<void, pool, sche2> {
+            auto&& ctx = co_await coflux::context();
+            coflux::channel<std::string[64]> chan;
+            auto processer1 = [](auto&&, coflux::channel<std::string[64]>& chan) -> coflux::fork<void, group::worker<1>> {
+                for (int i = 0; i < 5; i++)
+                    co_await(chan << "Message " + std::to_string(i) + " from Worker 1");
+                co_return;
+                };
+            auto processer2 = [](auto&&, coflux::channel<std::string[64]>& chan) -> coflux::fork<void, group::worker<0>> {
+                for (int i = 0; i < 5; i++) {
+                    co_await(chan << "Message " + std::to_string(i) + " from Worker 2");
+				}
+                co_return;
+                };
+
+			std::vector<coflux::fork<void, pool>> consumers;
+
+            for (int i = 0; i < 2; i++) {
+                consumers.push_back([&](auto&&, int consumer_id) -> coflux::fork<void, pool> {
+                    for (int i = 0; i < 5; i++) {
+                        std::string msg;
+                        while (!co_await(chan >> msg)) {
+                            // implicit yield to avoid busy waiting
+                        }
+                        std::cout << "  [Consumer " << consumer_id << "] Received: " << msg << "\n";
+                    }
+                    co_return;
+                    }(ctx, i + 1));
+            }
+            co_await coflux::when_all(processer1(ctx, chan), processer2(ctx, chan));
+			co_await coflux::when(consumers);
+            }(env);
+    }
+    // --- 7. 演示：生成器 (Loop & Recursion) ---
+    std::cout << "\n--- 7. Demo: Generators (Loop & Recursion) ---\n";
     {
         // 循环 (Loop)
         std::cout << "Looping (Fibonacci):\n  ";
@@ -483,6 +562,115 @@ int main() {
             };
         auto demo_task = launch(env);
         // RAII 析构 等待所有任务（包括未被 co_await 的）完成
+    }
+    std::cout << "--- Demo Finished ---\n";
+    return 0;
+}
+*/
+
+/*
+#include <iostream>
+#include <string>
+#include <coflux/scheduler.hpp>
+#include <coflux/combiner.hpp>
+#include <coflux/task.hpp>
+
+using noop = coflux::noop_executor;
+using group = coflux::worker_group<2>;
+using sche = coflux::scheduler<noop, group>;
+
+
+int main() {
+    std::cout << "--- Demo: thread executor group (Worker Group) ---\n";
+    {
+        auto env = coflux::make_environment<sche>();
+
+        auto demo_task = [](auto env) -> coflux::task<void, noop, sche> { // 使用 noop 作为起始执行器
+            auto& sch = co_await coflux::get_scheduler();
+			std::cout << "Initial thread: " << std::this_thread::get_id() << "\n";
+            co_await coflux::this_task::dispatch(sch.get<group::worker<0>>());
+            // 切换到 worker group 的第0号工作线程执行后续任务
+			std::cout << "After dispatch to worker 0, thread: " << std::this_thread::get_id() << "\n";
+            auto&& ctx = co_await coflux::context();
+            auto fork_on_worker1 = [](auto&&, int id) -> coflux::fork<void, group::worker<1>> {
+                std::cout << "  [Worker 1] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
+                co_return;
+                };
+            auto fork_on_worker0 = [](auto&&, int id) -> coflux::fork<void, group::worker<0>> {
+                std::cout << "  [Worker 0] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
+                co_return;
+                };
+
+            for (int i = 0; i < 5; i++) {
+                if (i & 1) {
+                    co_await(fork_on_worker1(ctx, i) | coflux::after(sch.get<group::worker<1>>()));
+                    std::cout << "  [Main Task] on thread " << std::this_thread::get_id() << "\n";
+                    // fork_on_worker1 在 worker 1 上执行, 恢复task后也继续在 worker 1 上执行
+                }
+                else {
+                    co_await(fork_on_worker0(ctx, i) | coflux::after(sch.get<group::worker<0>>()));
+                    std::cout << "  [Main Task] on thread " << std::this_thread::get_id() << "\n";
+                    // fork_on_worker0 在 worker 0 上执行, 恢复task后也继续在 worker 0 上执行
+                }
+            }
+
+            }(env);
+    }
+    std::cout << "--- Demo Finished ---\n";
+    return 0;
+}
+*/
+
+/*
+#include <iostream>
+#include <string>
+#include <coflux/scheduler.hpp>
+#include <coflux/combiner.hpp>
+#include <coflux/task.hpp>
+#include <coflux/generator.hpp>
+
+using noop = coflux::noop_executor;
+using pool = coflux::thread_pool_executor<>;
+using group = coflux::worker_group<2>;
+using sche = coflux::scheduler<noop, group, pool>;
+
+int main() {
+    std::cout << "--- Demo: channel<int[N]> ---\n";
+    {
+        auto env = coflux::make_environment<sche>();
+
+        auto demo_task = [](auto env) -> coflux::task<void, pool, sche> {
+            auto&& ctx = co_await coflux::context();
+            coflux::channel<std::string[64]> chan;
+            auto processer1 = [](auto&&, coflux::channel<std::string[64]>& chan) -> coflux::fork<void, group::worker<1>> {
+                for (int i = 0; i < 5; i++)
+                    co_await(chan << "Message " + std::to_string(i) + " from Worker 1");
+                co_return;
+                };
+            auto processer2 = [](auto&&, coflux::channel<std::string[64]>& chan) -> coflux::fork<void, group::worker<0>> {
+                for (int i = 0; i < 5; i++) {
+                    co_await(chan << "Message " + std::to_string(i) + " from Worker 2");
+                }
+                co_return;
+                };
+
+            std::vector<coflux::fork<void, pool>> consumers;
+
+            for (int i = 0; i < 2; i++) {
+                consumers.push_back([&](auto&&, int consumer_id) -> coflux::fork<void, pool> {
+                    for (int i = 0; i < 5; i++) {
+                        std::string msg;
+                        while (!co_await(chan >> msg)) {
+                            // implicit yield to avoid busy waiting
+                        }
+                        std::cout << "  [Consumer " << consumer_id << "] Received: " << msg << "\n";
+                    }
+                    co_return;
+                    }(ctx, i + 1));
+            }
+            co_await coflux::when_all(processer1(ctx, chan), processer2(ctx, chan));
+            co_await coflux::when(consumers);
+            }(env);
     }
     std::cout << "--- Demo Finished ---\n";
     return 0;

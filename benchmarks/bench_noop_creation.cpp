@@ -11,7 +11,6 @@ coflux::fork<void, coflux::noop_executor> trivial_fork(auto&&) {
 
 static void BM_Pmr_ForkCreation(benchmark::State& state) {
     state.SetLabel("memory_resource : monotonic");
-    // 创建一个极快的 monotonic buffer 作为内存资源
     std::vector<std::byte> memory_arena(1024 * 1024 * 1024); // 1GB, on Heap
     for (auto _ : state) {
         state.PauseTiming();

@@ -404,6 +404,11 @@ namespace coflux {
             return detail::dispatch_awaiter<true, Executor>{ exec };
         }
 
+        template <executive Executor>
+        inline auto dispatch(Executor& exec) noexcept {
+            return detail::dispatch_awaiter<true, Executor>{ &exec };
+
+        }
         template <typename Rep, typename Period>
         inline auto sleep_for(const std::chrono::duration<Rep, Period>& sleep_time) noexcept {
             return detail::sleep_t<true, Rep, Period>{sleep_time};

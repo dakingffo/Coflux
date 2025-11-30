@@ -15,7 +15,7 @@
 <br>
 *A C++20 coroutine framework for building statically-defined, high-performance concurrent systems*
 
-[中文版本](./docs/README.zh.md) 
+[简体中文](./README.zh.md) 
 
 ## Introduction
 
@@ -146,7 +146,7 @@ graph TD
     async_read_request3-->async_write_response3
 ```
 
-### 2\. Mixed Style: `co_await` and `on_xxx` Chaining
+### 2. Mixed Style: `co_await` and `on_xxx` Chaining
 
 The example below demonstrates asynchronous code using both coroutine style and callback style.
 Code in the form `auto res = co_await std::move(t).on_xxx().on_xxx()` describes a "just-in-time configuration" fast path.
@@ -226,7 +226,7 @@ int main() {
 }
 ```
 
-### 3\. Synchronous Wrapper `make_fork` and `fork_view` for Building DAG Dependencies
+### 3. Synchronous Wrapper `make_fork` and `fork_view` for Building DAG Dependencies
 
 The example below demonstrates packaging a synchronous task into a `fork` and specifying its `executor`.
 
@@ -358,7 +358,162 @@ int main() {
 }
 ```
 
-### 5\. Generator Loops and Recursion
+### 5. Execution Thread Group and Context Switching Mechanism
+
+The execution thread group, defined by `worker_group<N>`, sets up $N$ mutually independent execution contexts. The executor template parameter `worker_group<N>::worker<M>` can then locate `worker_group<N>` and dispatch tasks to the corresponding thread.
+
+Users can fully rely on this executor to customize their own user-space event loops.
+
+The following code demonstrates the operation of the execution thread group. The initial task executor is set to `noop` only to illustrate the `dispatch` functionality.
+
+The `after` combiner can intercept the default executor's behavior of injecting an `awaitable_closure`. In this case, the executor specified by the user is used to resume the caller.
+
+```c++
+#include <iostream>
+#include <string>
+#include <coflux/scheduler.hpp>
+#include <coflux/combiner.hpp>
+#include <coflux/task.hpp>
+
+// Define noop as the starting executor
+using noop = coflux::noop_executor;
+// Define a worker group with 2 threads
+using group = coflux::worker_group<2>;
+// Define the scheduler using noop and the 2-thread worker group
+using sche = coflux::scheduler<noop, group>;
+
+
+int main() {
+    std::cout << "--- Demo: thread executor group (Worker Group) ---\n";
+    {
+        // Create the environment with the defined scheduler
+        auto env = coflux::make_environment<sche>();
+
+        // Define the demo task, starting with noop executor
+        auto demo_task = [](auto env) -> coflux::task<void, noop, sche> { 
+            auto& sch = co_await coflux::get_scheduler();
+            std::cout << "Initial thread: " << std::this_thread::get_id() << "\n";
+            // Dispatch to the worker 0 of the worker group
+            co_await coflux::this_task::dispatch(sch.get<group::worker<0>>());
+            // Execution context switched to worker thread 0 for subsequent tasks
+            std::cout << "After dispatch to worker 0, thread: " << std::this_thread::get_id() << "\n";
+            
+            auto&& ctx = co_await coflux::context();
+            
+            // Fork that executes on worker 1
+            auto fork_on_worker1 = [](auto&&, int id) -> coflux::fork<void, group::worker<1>> {
+                std::cout << "  [Worker 1] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
+                co_return;
+            };
+            
+            // Fork that executes on worker 0
+            auto fork_on_worker0 = [](auto&&, int id) -> coflux::fork<void, group::worker<0>> {
+                std::cout << "  [Worker 0] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
+                co_return;
+            };
+
+            for (int i = 0; i < 5; i++) {
+                if (i & 1) {
+                    // Fork runs on worker 1. The 'after' combinator specifies that the main task
+                    // should resume on worker 1 after the fork completes.
+                    co_await(fork_on_worker1(ctx, i) | coflux::after(sch.get<group::worker<1>>()));
+                    std::cout << "  [Main Task] on thread " << std::this_thread::get_id() << "\n";
+                }
+                else {
+                    // Fork runs on worker 0. The 'after' combinator specifies that the main task
+                    // should resume on worker 0 after the fork completes.
+                    co_await(fork_on_worker0(ctx, i) | coflux::after(sch.get<group::worker<0>>()));
+                    std::cout << "  [Main Task] on thread " << std::this_thread::get_id() << "\n";
+                }
+            }
+
+        }(env);
+    }
+    std::cout << "--- Demo Finished ---\n";
+    return 0;
+}
+```
+
+### 6. **`channel` (Channel)**
+
+There are two types of channels: `channel<T[N]>` and `channel<T[]>` (for unbuffered channels, `channel<T>` is often used in practice, but the context implies an array syntax for buffer size $N=0$ or unspecified).
+
+  * **`channel<T[N]>`** (Buffered Channel):
+    This channel has a buffer size of $N$. Coroutines will **not be suspended** regardless of whether the read or write operation succeeds or fails. It is used for **efficient information transfer**.
+
+  * **`channel<T[]>`** (Unbuffered Channel / Handshake Channel):
+    This channel is unbuffered (or has a size of $0$), which will **cause the coroutine to suspend** until the matching operation (write for a read, or read for a write) occurs. It is used for **handshaking/synchronization**.
+
+The operations `co_await (chan << t)` (write) or `co_await (chan >> t)` (read) return a **boolean value**, indicating whether the operation was successful.
+
+The example below demonstrates two independently running producers and two consumers running on a thread pool communicating using a channel.
+
+```cpp
+#include <iostream>
+#include <string>
+#include <coflux/scheduler.hpp>
+#include <coflux/combiner.hpp>
+#include <coflux/task.hpp>
+#include <coflux/generator.hpp>
+
+using noop = coflux::noop_executor;
+using pool = coflux::thread_pool_executor<>;
+using group = coflux::worker_group<2>;
+using sche = coflux::scheduler<noop, group, pool>;
+
+int main() {
+    std::cout << "--- Demo: channel<int[N]> ---\n";
+    {
+        auto env = coflux::make_environment<sche>();
+
+        auto demo_task = [](auto env) -> coflux::task<void, pool, sche> {
+            auto&& ctx = co_await coflux::context();
+            coflux::channel<std::string[64]> chan; // Buffered Channel of size 64
+
+            // Producer 1: Runs on worker<1> of the worker_group
+            auto processer1 = [](auto&&, coflux::channel<std::string[64]>& chan) -> coflux::fork<void, group::worker<1>> {
+                for (int i = 0; i < 5; i++)
+                    co_await(chan << "Message " + std::to_string(i) + " from Worker 1");
+                co_return;
+                };
+                
+            // Producer 2: Runs on worker<0> of the worker_group
+            auto processer2 = [](auto&&, coflux::channel<std::string[64]>& chan) -> coflux::fork<void, group::worker<0>> {
+                for (int i = 0; i < 5; i++) {
+                    co_await(chan << "Message " + std::to_string(i) + " from Worker 2");
+                }
+                co_return;
+                };
+
+            std::vector<coflux::fork<void, pool>> consumers;
+
+            // Create 2 Consumers, running on the generic thread_pool
+            for (int i = 0; i < 2; i++) {
+                consumers.push_back([&](auto&&, int consumer_id) -> coflux::fork<void, pool> {
+                    for (int i = 0; i < 5; i++) {
+                        std::string msg;
+                        while (!co_await(chan >> msg)) {
+                            // A busy-wait is avoided by an implicit yield internally
+                        }
+                        std::cout << "  [Consumer " << consumer_id << "] Received: " << msg << "\n";
+                    }
+                    co_return;
+                    }(ctx, i + 1));
+            }
+            
+            // Await both producers to finish
+            co_await coflux::when_all(processer1(ctx, chan), processer2(ctx, chan));
+            
+            // Await all consumers to finish
+            co_await coflux::when(consumers);
+            }(env);
+    }
+    std::cout << "--- Demo Finished ---\n";
+    return 0;
+}
+```
+
+### 7. Generator Loops and Recursion
 
 The example below demonstrates the two generation strategies supported by `coflux::generator`: looping and recursion.
 `coflux::generator` mimics `input_range` and can be integrated into `std::ranges`.

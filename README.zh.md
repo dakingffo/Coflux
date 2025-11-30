@@ -15,7 +15,7 @@
 <br>
 *A C++20 coroutine framework for building statically-defined, high-performance concurrent systems*
 
-[English Version](./README.en.md) 
+[English](./README.md) 
 
 ## 简介
 
@@ -40,7 +40,7 @@ Coflux的设计由几个核心理念驱动。
 * 基于**任务即上下文**的*pmr*支持和*异构执行*支持。
 * **静态的沟渠**理念：追求*零开销抽象*，在编译期最大程度描述一个异步并发系统。
 
-要深入了解**结构化并发**、**任务即上下文**和“**静态的沟渠**”的提出，请阅读 **[设计与架构文档 (ARCHITECTURE.md)](./ARCHITECTURE.zh.md)**。
+要深入了解**结构化并发**、**任务即上下文**和“**静态的沟渠**”的提出，请阅读 **[设计与架构文档 (ARCHITECTURE.md)](./docs/ARCHITECTURE.zh.md)**。
 
 ## 性能摘要
 
@@ -53,7 +53,7 @@ Coflux 的设计理念是 **“静态的沟渠”**，其性能目标是提供**
 | **高并发吞吐量** | **$\mathbf{\sim 1.95 \text{ 万次/秒}}$** | 在高竞争负载下，保持了 **1.95 M/s** 的稳定吞吐，证明了同步机制的**鲁棒性**。 |
 | **序列依赖处理** | **$\mathbf{\sim 1 \text{ 微秒}}$** / 阶段 | 完整的协程挂起-调度-恢复循环延迟极低，**适用于 I/O 密集型 Pipeline**。 |
 
-有关详细的方法论、硬件规格和完整的数据分析，请参阅 **[BENCHMARK.md](./BENCHMARK.zh.md)**。
+有关详细的方法论、硬件规格和完整的数据分析，请参阅 **[BENCHMARK.md](./docs/BENCHMARK.zh.md)**。
 
 ## Coflux 的核心价值
 
@@ -354,7 +354,131 @@ int main() {
     return 0;
 }
 ```
-5. **生成器循环与递归**
+5. **执行线程组与上下文切换机制**
+
+执行线程组`worker_group<N>`定义了N个互为独立的执行上下文，执行器模版参数`worker_group<N>::woker<M>`即可寻找`worker_group<N>`并指派任务到对应的线程上。
+用户完全可以依赖此执行器定制用户态事件循环。
+
+下面演示了执行线程组的工作模式，初始指定task执行器为`noop`仅用于展示`dispatch`功能。
+`after`可以拦截默认执行器注入`awaitable_closure`的行为，在这种情况下则使用用户指定的执行器恢复调用者。
+```C++
+#include <iostream>
+#include <string>
+#include <coflux/scheduler.hpp>
+#include <coflux/combiner.hpp>
+#include <coflux/task.hpp>
+
+using noop = coflux::noop_executor;
+using group = coflux::worker_group<2>;
+using sche = coflux::scheduler<noop, group>;
+
+
+int main() {
+    std::cout << "--- Demo: thread executor group (Worker Group) ---\n";
+    {
+        auto env = coflux::make_environment<sche>();
+
+        auto demo_task = [](auto env) -> coflux::task<void, noop, sche> { // 使用 noop 作为起始执行器
+            auto& sch = co_await coflux::get_scheduler();
+			std::cout << "Initial thread: " << std::this_thread::get_id() << "\n";
+            co_await coflux::this_task::dispatch(sch.get<group::worker<0>>());
+            // 切换到 worker group 的第0号工作线程执行后续任务
+			std::cout << "After dispatch to worker 0, thread: " << std::this_thread::get_id() << "\n";
+            auto&& ctx = co_await coflux::context();
+            auto fork_on_worker1 = [](auto&&, int id) -> coflux::fork<void, group::worker<1>> {
+                std::cout << "  [Worker 1] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
+                co_return;
+                };
+            auto fork_on_worker0 = [](auto&&, int id) -> coflux::fork<void, group::worker<0>> {
+                std::cout << "  [Worker 0] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
+                co_return;
+                };
+
+            for (int i = 0; i < 5; i++) {
+                if (i & 1) {
+                    co_await(fork_on_worker1(ctx, i) | coflux::after(sch.get<group::worker<1>>()));
+                    std::cout << "  [Main Task] on thread " << std::this_thread::get_id() << "\n";
+                    // fork_on_worker1 在 worker 1 上执行, 恢复task后也继续在 worker 1 上执行
+                }
+                else {
+                    co_await(fork_on_worker0(ctx, i) | coflux::after(sch.get<group::worker<0>>()));
+                    std::cout << "  [Main Task] on thread " << std::this_thread::get_id() << "\n";
+                    // fork_on_worker0 在 worker 0 上执行, 恢复task后也继续在 worker 0 上执行
+                }
+            }
+
+            }(env);
+    }
+    std::cout << "--- Demo Finished ---\n";
+    return 0;
+}
+```
+6. **`channel`通道**
+
+有两种通道:`channel<T[N]>`和`channel<T[]>`。
+`channel<T[N]>`有大小为N的缓冲区，无论读取或写入成功还是失败都不会挂起协程。用于高效的传递信息。
+`channel<T[]>`无缓冲，会导致协程的挂起。用于握手。
+`co_await (chan << t)` 或`co_await (chan >> t)`返回布尔值，用于描述是否成功。
+
+下面的示例展示了两个独立运行的生产者和两个运行在线程池上的消费者利用通道进行通信。
+
+```C++
+#include <iostream>
+#include <string>
+#include <coflux/scheduler.hpp>
+#include <coflux/combiner.hpp>
+#include <coflux/task.hpp>
+#include <coflux/generator.hpp>
+
+using noop = coflux::noop_executor;
+using pool = coflux::thread_pool_executor<>;
+using group = coflux::worker_group<2>;
+using sche = coflux::scheduler<noop, group, pool>;
+
+int main() {
+    std::cout << "--- Demo: channel<int[N]> ---\n";
+    {
+        auto env = coflux::make_environment<sche>();
+
+        auto demo_task = [](auto env) -> coflux::task<void, pool, sche> {
+            auto&& ctx = co_await coflux::context();
+            coflux::channel<std::string[64]> chan;
+            auto processer1 = [](auto&&, coflux::channel<std::string[64]>& chan) -> coflux::fork<void, group::worker<1>> {
+                for (int i = 0; i < 5; i++)
+                    co_await(chan << "Message " + std::to_string(i) + " from Worker 1");
+                co_return;
+                };
+            auto processer2 = [](auto&&, coflux::channel<std::string[64]>& chan) -> coflux::fork<void, group::worker<0>> {
+                for (int i = 0; i < 5; i++) {
+                    co_await(chan << "Message " + std::to_string(i) + " from Worker 2");
+                }
+                co_return;
+                };
+
+            std::vector<coflux::fork<void, pool>> consumers;
+
+            for (int i = 0; i < 2; i++) {
+                consumers.push_back([&](auto&&, int consumer_id) -> coflux::fork<void, pool> {
+                    for (int i = 0; i < 5; i++) {
+                        std::string msg;
+                        while (!co_await(chan >> msg)) {
+                            // 内部会隐式地执行yield避免忙等待
+                        }
+                        std::cout << "  [Consumer " << consumer_id << "] Received: " << msg << "\n";
+                    }
+                    co_return;
+                    }(ctx, i + 1));
+            }
+            co_await coflux::when_all(processer1(ctx, chan), processer2(ctx, chan));
+            co_await coflux::when(consumers);
+            }(env);
+    }
+    std::cout << "--- Demo Finished ---\n";
+    return 0;
+}
+```
+
+7. **生成器循环与递归**
 
 下面的示例展示了`coflux::generator`支持的两种生成策略:循环与递归。
 `coflux::generator`模仿`input_range`，可以集成到`std::ranges`。

@@ -109,15 +109,14 @@ namespace coflux {
 
 	class timer_executor {
 	public:
-		using clock      = typename concurrent::timer_thread::clock;
-		using time_point = typename concurrent::timer_thread::time_point;
-		using duration   = typename concurrent::timer_thread::duration;
-		using package    = typename concurrent::timer_thread::package;
+		using thread     = concurrent::timer_thread;
+		using clock      = typename thread::clock;
+		using time_point = typename thread::time_point;
+		using duration   = typename thread::duration;
+		using package    = typename thread::package;
 
 	public:
-		timer_executor()
-			: thread_(std::make_shared<concurrent::timer_thread>()) {
-		}
+		timer_executor() : thread_(std::make_shared<thread>()) {}
 		~timer_executor() = default;
 
 		timer_executor(const timer_executor&)            = default;
@@ -131,15 +130,40 @@ namespace coflux {
 		}
 
 	private:
-		std::shared_ptr<concurrent::timer_thread> thread_;
+		std::shared_ptr<thread> thread_;
 	};
 
 	namespace detail{
-		template <std::size_t M, typename Group>
-		class worker : public ::coflux::concurrent::worker_thread<typename Group::queue_type> {
+		template <typename Group>
+		class worker_base {
 		public:
 			using owner_group = Group;
-			
+			using thread = ::coflux::concurrent::worker_thread<typename Group::queue_type>;
+
+		public:
+			worker_base() : thread_(std::make_shared<thread>()) {}
+			~worker_base() = default;
+
+			worker_base(const worker_base&)            = default;
+			worker_base(worker_base&&)                 = default;
+			worker_base& operator=(const worker_base&) = default;
+			worker_base& operator=(worker_base&&)      = default;
+
+			void execute(std::coroutine_handle<> handle) {
+				thread_->submit(handle);
+			}
+
+		private:
+			std::shared_ptr<thread> thread_;
+		};
+
+		template <std::size_t M, typename Group>
+		class worker : public worker_base<Group> {
+		public:
+			using base        = worker_base<Group>;
+			using owner_group = typename base::owner_group;
+			using thread      = typename base::thread;
+
 			static constexpr std::size_t pos = M;
 
 		public:
@@ -152,7 +176,7 @@ namespace coflux {
 			worker& operator=(worker&&)      = default;
 		
 			void execute(std::coroutine_handle<> handle) {
-				this->submit(handle);
+				base::execute(handle);
 			}
 		};
 	}
@@ -162,14 +186,14 @@ namespace coflux {
 	public:
 		static_assert(N, "N shoud be larger than zero");
 
-		using queue_type     = TaskQueue;
+		using queue_type   = TaskQueue;
 
 		template <std::size_t M>
 		using worker       = detail::worker<M, worker_group>;
-		using worker_array = std::array<concurrent::worker_thread<queue_type>, N>;
+		using worker_array = std::array<detail::worker_base<worker_group>, N>;
 
 	public:
-		worker_group() : workers_(std::make_shared<worker_array>()) {}
+		worker_group()  = default;
 		~worker_group() = default;
 
 		worker_group(const worker_group&)            = default;
@@ -185,7 +209,7 @@ namespace coflux {
 		template <std::size_t M>
 		auto& get() noexcept {
 			static_assert(M < N, "worker_index out of range.");
-			return *static_cast<worker<M>*>(&(*workers_)[M]);
+			return *static_cast<worker<M>*>(&workers_[M]);
 		}
 
 	private:
@@ -193,7 +217,7 @@ namespace coflux {
 			throw std::runtime_error("No worker is specified.");
 		}
 
-		std::shared_ptr<worker_array> workers_;
+		worker_array workers_;
 	};
 
 	template <std::size_t M, typename Group, std::size_t N>
