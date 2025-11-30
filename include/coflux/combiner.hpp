@@ -386,9 +386,9 @@ namespace coflux {
         };
 
         struct when_n_functor {
-            struct when_n_parameters {
+            struct when_n_parameter {
                 template <task_like_range Range>
-                friend auto operator|(Range&& tasks, const when_n_parameters& self) {
+                friend auto operator|(Range&& tasks, const when_n_parameter& self) {
                     return when_n_closure<Range>(std::forward<Range>(tasks), self.n_);
                 }
 
@@ -401,7 +401,7 @@ namespace coflux {
             }
 
             auto operator()(std::size_t n) const noexcept {
-                return when_n_parameters{ n };
+                return when_n_parameter{ n };
             };
 
             template <task_like_range Range>
@@ -585,9 +585,95 @@ namespace coflux {
         };
     }
 
+    namespace detail {
+        template <typename Closure, executive Executor>
+        struct after_closure : public awaitable_closure<after_closure<Closure, Executor>> {
+            using executor_traits  = detail::executor_traits<Executor>;
+            using executor_type    = typename executor_traits::executor_type;
+            using executor_pointer = typename executor_traits::executor_pointer;
+
+            after_closure(Closure&& closure, executor_pointer exec) 
+                :  closure_(std::move(closure)), executor_(exec) {}
+            ~after_closure() = default;
+
+            after_closure(const after_closure&)            = delete;
+            after_closure(after_closure&&)                 = default;
+            after_closure& operator=(const after_closure&) = delete;
+            after_closure& operator=(after_closure&&)      = default;
+
+            template <executive E>
+            auto transform(E*, std::atomic<status>* st) && {
+                return awaiter<Closure, Executor>(std::move(closure_), executor_, st);
+            }
+
+            Closure          closure_;
+            executor_pointer executor_;
+        };
+
+        template <task_like TaskLike, executive Executor>
+        struct after_closure<TaskLike, Executor> : public awaitable_closure<after_closure<TaskLike, Executor>> {
+            using task_type        = std::conditional_t<std::is_rvalue_reference_v<TaskLike>, std::remove_reference_t<TaskLike>, TaskLike>;
+            using executor_traits  = detail::executor_traits<Executor>;
+            using executor_type    = typename executor_traits::executor_type;
+            using executor_pointer = typename executor_traits::executor_pointer;
+
+            after_closure(TaskLike&& co_task, executor_pointer exec) 
+                :  task_(std::forward<TaskLike>(co_task)), executor_(exec) {}
+            ~after_closure() = default;
+
+            after_closure(const after_closure&)            = delete;
+            after_closure(after_closure&&)                 = default;
+            after_closure& operator=(const after_closure&) = delete;
+            after_closure& operator=(after_closure&&)      = default;
+
+            template <executive E>
+            auto transform(E*, std::atomic<status>* st) && {
+                return awaiter<TaskLike, Executor>(std::forward<TaskLike>(task_), executor_, st);
+            }
+
+            task_type        task_;
+            executor_pointer executor_;
+        };
+
+        struct after_functor {
+            template <executive E>
+            struct after_parameter {
+                using executor_pointer = typename executor_traits<E>::executor_pointer;
+
+                template <typename T>
+                friend auto operator|(T&& closure, const after_parameter& self) {
+                    return after_closure<T, E>(std::forward<T>(closure), self.executor_);
+                }
+
+                executor_pointer executor_;
+            };
+
+            template <typename T, executive E>
+            auto operator()(T&& closure, E* exec) const noexcept {
+                return after_closure<T, E>(std::forward<T>(closure), exec);
+            }
+
+            template <typename T, executive E>
+            auto operator()(T&& closure, E& exec) const noexcept {
+                return after_closure<T, E>(std::forward<T>(closure), &exec);
+            }
+
+            template <executive E>
+            auto operator()(E* exec) const noexcept {
+                return after_parameter<E>{ exec };
+            };
+
+            template <executive E>
+            auto operator()(E& exec) const noexcept {
+                return after_parameter<E>{ &exec };
+            };
+        };
+    }
+
     inline constexpr auto when_any = detail::when_any_functor{};
     inline constexpr auto when_all = detail::when_all_functor{};
     inline constexpr auto when     = detail::when_n_functor{};
+    inline constexpr auto after    = detail::after_functor{};
 }
 
 #endif // !COFLUX_COMBINER_HPP

@@ -260,3 +260,54 @@ TEST(CombinerTest, RangeWhen_WithTakeView) {
     EXPECT_EQ(results[1], 3);
     EXPECT_EQ(results[2], 4);
 }
+
+TEST(CombinerTest, After_TaskLike) {
+    using group = coflux::worker_group<2>;
+    using sche = coflux::scheduler<group>;
+
+    auto env = coflux::make_environment(sche{});
+
+    auto test_task = [](auto env) -> coflux::task<void, group::worker<0>, sche> {
+        auto&& ctx = co_await coflux::context();
+
+        auto test_fork = [](auto&&) ->coflux::fork<std::thread::id, group::worker<1>> {
+            co_return std::this_thread::get_id();
+        };
+
+        std::thread::id worker0_id = std::this_thread::get_id();
+        auto& sch = co_await coflux::get_scheduler();
+        auto& worker1 = sch.template get<group::worker<1>>();
+
+        std::thread::id worker1_id = co_await coflux::after(test_fork(ctx), worker1);
+        EXPECT_NE(worker0_id, std::this_thread::get_id());
+        EXPECT_EQ(worker1_id, std::this_thread::get_id());
+    }(env);
+}
+
+TEST(CombinerTest, After_Combiner) {
+    using group = coflux::worker_group<3>;
+    using sche = coflux::scheduler<group>;
+
+    auto env = coflux::make_environment(sche{});
+
+    auto test_task = [](auto env) -> coflux::task<void, group::worker<0>, sche> {
+        auto&& ctx = co_await coflux::context();
+
+        auto test_fork1 = [](auto&&) ->coflux::fork<std::thread::id, group::worker<1>> {
+            co_return std::this_thread::get_id();
+        };
+
+        auto test_fork2 = [](auto&&) ->coflux::fork<std::thread::id, group::worker<2>> {
+            co_return std::this_thread::get_id();
+        };
+
+        std::thread::id worker0_id = std::this_thread::get_id();
+        auto& sch = co_await coflux::get_scheduler();
+        auto& worker2 = sch.template get<group::worker<2>>();
+
+        auto [worker1_id, worker2_id] = co_await (coflux::when_all(test_fork1(ctx), test_fork2(ctx)) | coflux::after(worker2));
+        EXPECT_NE(worker0_id, std::this_thread::get_id());
+        EXPECT_NE(worker1_id, std::this_thread::get_id());
+        EXPECT_EQ(worker2_id, std::this_thread::get_id());
+    }(env);
+}

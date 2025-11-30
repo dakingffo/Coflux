@@ -92,8 +92,8 @@ namespace coflux {
             using executor_pointer = typename suspend_base::executor_pointer;
 
         public:
-            explicit awaiter(TaskLike&& co_task, executor_pointer exec, std::atomic<status>* p)
-                : suspend_base(exec, p)
+            explicit awaiter(TaskLike&& co_task, executor_pointer exec, std::atomic<status>* st)
+                : suspend_base(exec, st)
                 , task_(std::forward<TaskLike>(co_task)) {}
             ~awaiter() {};
 

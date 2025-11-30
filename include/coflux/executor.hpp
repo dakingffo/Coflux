@@ -208,16 +208,28 @@ namespace coflux {
 		template <executive_or_certain_executor Executor>
 		struct executor_type_traits;
 
+		template <executive E, typename = void>
+		struct schedulable_type {
+			using type = E;
+		};
+
+		template <executive E>
+		struct schedulable_type<E, std::void_t<typename E::owner_group>> {
+			using type = typename E::owner_group;
+		};
+
 		template <executive Executor>
 		struct executor_type_traits<Executor> {
 			using executor_type    = Executor;
 			using executor_pointer = Executor*;
+			using schedulable_type = typename schedulable_type<executor_type>::type;
 		};
 
 		template <certain_executor Idx>
 		struct executor_type_traits<Idx> {
 			using executor_type    = typename Idx::type;
 			using executor_pointer = typename Idx::type*;
+			using schedulable_type = typename schedulable_type<executor_type>::type;
 		};
 
 		template <executive_or_certain_executor Executor>
@@ -225,6 +237,7 @@ namespace coflux {
 			using type_traits      = executor_type_traits<Executor>;
 			using executor_type    = typename type_traits::executor_type;
 			using executor_pointer = typename type_traits::executor_pointer;
+			using schedulable_type = typename type_traits::schedulable_type;
 
 			static void execute(executor_pointer exec, std::coroutine_handle<> handle) {
 				if constexpr (executive_handle<executor_type>) {

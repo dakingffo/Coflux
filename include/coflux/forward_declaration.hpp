@@ -155,7 +155,7 @@ namespace coflux {
 	};
 
 	template <typename Executor>
-	concept executive = executive_handle<Executor> || executive_function<Executor>;
+	concept executive = (!std::is_reference_v<Executor>) && (executive_handle<Executor> || executive_function<Executor>);
 
 	template <executive Executor, std::size_t N>
 	struct index : std::integral_constant<std::size_t, N> {
@@ -209,12 +209,13 @@ namespace coflux {
 #define COFLUX_EXECUTABLE_CONCEPTS
 
 	namespace detail {
-		template <typename Ty,
+		template <
+			typename                      Ty,
 			executive_or_certain_executor Executor,
-			schedulable Scheduler,
-			simple_awaitable Initial,
-			awaitable Final,
-			bool Ownership>
+			schedulable                   Scheduler,
+			simple_awaitable              Initial,
+			awaitable                     Final,
+			bool                          Ownership>
 		class basic_task;
 
 		struct ownership_limited_tag {};

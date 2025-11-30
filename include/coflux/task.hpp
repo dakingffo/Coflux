@@ -11,12 +11,13 @@ namespace coflux {
 	namespace detail {
 		// basic_task 用以表示一个异步任务，这是对协程的一个抽象封装。
 		// basic_task is used to represent an asynchronous basic_task, which is an abstract encapsulation of a coroutine.
-		template <typename Ty,
+		template <
+			typename 					  Ty,
 			executive_or_certain_executor Executor,
-			schedulable Scheduler,
-			simple_awaitable Initial,
-			awaitable Final,
-			bool Ownership>
+			schedulable 				  Scheduler,
+			simple_awaitable 			  Initial,
+			awaitable 					  Final,
+			bool 						  Ownership>
 		class COFLUX_ATTRIBUTES(COFLUX_NODISCARD) basic_task {
 		public:
 			static_assert(std::is_object_v<Ty> || std::is_void_v<Ty>, "basic_task must be instantiated by the object type or void.");
@@ -297,13 +298,15 @@ namespace coflux {
 				throw cancel_exception(Ownership);
 			}
 
-			handle_type handle_            = nullptr;
+			handle_type handle_ = nullptr;
 		};
 	}
 
-	template <typename Ty, executive_or_certain_executor Executor = noop_executor,
-		schedulable Scheduler = scheduler<typename detail::executor_traits<Executor>::executor_type>>
-		using task = detail::basic_task<Ty, Executor, Scheduler, std::suspend_never, detail::final_awaiter, true>;
+	template <
+		typename 					  Ty, 
+		executive_or_certain_executor Executor  = noop_executor,
+		schedulable 				  Scheduler = scheduler<typename detail::executor_traits<Executor>::schedulable_type>>
+	using task = detail::basic_task<Ty, Executor, Scheduler, std::suspend_never, detail::final_awaiter, true>;
 
 	template <typename Ty, executive_or_certain_executor Executor = noop_executor>
 	using fork = detail::basic_task<Ty, Executor, scheduler<void>, std::suspend_never, detail::final_awaiter, false>;
