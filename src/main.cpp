@@ -231,7 +231,7 @@ int main() {
 		auto demo_task = [](auto env) -> coflux::task<void, noop, sche2> { // 使用 noop 作为起始执行器
 			auto& sch = co_await coflux::get_scheduler();
             std::cout << "Initial thread: " << std::this_thread::get_id() << "\n";
-            co_await coflux::this_task::dispatch(sch.get<group::worker<0>>());
+            co_await coflux::this_task::dispatch(sch.template get<group::worker<0>>());
             // 切换到 worker group 的第0号工作线程执行后续任务
             std::cout << "After dispatch to worker 0, thread: " << std::this_thread::get_id() << "\n";
             
@@ -249,12 +249,12 @@ int main() {
 
             for (int i = 0; i < 5; i++) {
                 if (i & 1) {
-                    co_await (fork_on_worker1(ctx, i) | coflux::after(sch.get<group::worker<1>>()));
+                    co_await (fork_on_worker1(ctx, i) | coflux::after(sch.template get<group::worker<1>>()));
 					std::cout << "  [Main Task] on thread " << std::this_thread::get_id() << "\n";
 					// fork_on_worker1 在 worker 1 上执行, 恢复task后也继续在 worker 1 上执行
                 }
                 else {
-					co_await (fork_on_worker0(ctx, i) | coflux::after(sch.get<group::worker<0>>()));
+					co_await (fork_on_worker0(ctx, i) | coflux::after(sch.template get<group::worker<0>>()));
                     std::cout << "  [Main Task] on thread " << std::this_thread::get_id() << "\n";
 					// fork_on_worker0 在 worker 0 上执行, 恢复task后也继续在 worker 0 上执行
                 }

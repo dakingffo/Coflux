@@ -5,7 +5,7 @@
 #ifndef COFLUX_THIS_COROUTINE_HPP
 #define COFLUX_THIS_COROUTINE_HPP
 
-#include "awaiter.hpp"
+#include "detail/awaiter.hpp"
 #include "environment.hpp"
 
 namespace coflux {
