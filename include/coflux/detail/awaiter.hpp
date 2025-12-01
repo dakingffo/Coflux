@@ -5,7 +5,8 @@
 #ifndef COFLUX_AWAITER_HPP
 #define COFLUX_AWAITER_HPP
 
-#include "scheduler.hpp"
+#include "forward_declaration.hpp"
+#include "../scheduler.hpp"
 
 namespace coflux {
     namespace detail {

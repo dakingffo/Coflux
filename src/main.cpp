@@ -237,10 +237,12 @@ int main() {
             
             auto&& ctx = co_await coflux::context();
             auto fork_on_worker1 = [](auto&&, int id) -> coflux::fork<void, group::worker<1>> {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 std::cout << "  [Worker 1] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
                 co_return;
 				};
             auto fork_on_worker0 = [](auto&&, int id) -> coflux::fork<void, group::worker<0>> {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 std::cout << "  [Worker 0] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
                 co_return;
                 };
@@ -593,10 +595,12 @@ int main() {
 			std::cout << "After dispatch to worker 0, thread: " << std::this_thread::get_id() << "\n";
             auto&& ctx = co_await coflux::context();
             auto fork_on_worker1 = [](auto&&, int id) -> coflux::fork<void, group::worker<1>> {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 std::cout << "  [Worker 1] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
                 co_return;
                 };
             auto fork_on_worker0 = [](auto&&, int id) -> coflux::fork<void, group::worker<0>> {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 std::cout << "  [Worker 0] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
                 co_return;
                 };

@@ -5,7 +5,7 @@
 #ifndef COFLUX_WORKER_THREAD_HPP
 #define COFLUX_WORKER_THREAD_HPP
 
-#include "../forward_declaration.hpp"
+#include "../detail/forward_declaration.hpp"
 #include "unbounded_queue.hpp"
 
 namespace coflux {

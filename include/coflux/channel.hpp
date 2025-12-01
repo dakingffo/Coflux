@@ -6,7 +6,7 @@
 #define COFLUX_CHANNEL_HPP
 
 #include "concurrent/ring.hpp"
-#include "awaiter.hpp"
+#include "detail/awaiter.hpp"
 #include <iostream>
 
 namespace coflux {
@@ -299,6 +299,7 @@ namespace coflux {
 		}
 
 		bool Try_write(const_reference value, bool& success_flag_) {
+			//return false;
 			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				return false;
 			}
@@ -307,6 +308,7 @@ namespace coflux {
 		}
 
 		bool Try_read(reference value, bool& success_flag_)  {
+			//return false;
 			if (!active()) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				return false;
 			}

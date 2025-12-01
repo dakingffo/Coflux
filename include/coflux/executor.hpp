@@ -5,7 +5,6 @@
 #ifndef COFLUX_EXECUTOR_HPP
 #define COFLUX_EXECUTOR_HPP
 
-#include <iostream>
 #include "concurrent/thread_pool.hpp"
 #include "concurrent/timer_thread.hpp"
 #include "concurrent/worker_thread.hpp"

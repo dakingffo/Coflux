@@ -5,7 +5,7 @@
 #ifndef COFLUX_SYNC_CIRCULAR_BUFFER_HPP
 #define COFLUX_SYNC_CIRCULAR_BUFFER_HPP
 
-#include "../forward_declaration.hpp"
+#include "../detail/forward_declaration.hpp"
 #include "sequence_lock.hpp"
 
 namespace coflux {
@@ -281,11 +281,11 @@ namespace coflux {
 			}
 
 			bool empty() const noexcept {
-				return head_.load(std::memory_order_relaxed) == tail_.load(std::memory_order_relaxed);
+				return head_.load(std::memory_order_acquire) == tail_.load(std::memory_order_acquire);
 			}
 
 			size_type size_approx() const noexcept {
-				return tail_.load(std::memory_order_relaxed) - head_.load(std::memory_order_relaxed);
+				return tail_.load(std::memory_order_acquire) - head_.load(std::memory_order_acquire);
 			}
 
 			constexpr size_type capacity() const noexcept {

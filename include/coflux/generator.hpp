@@ -5,7 +5,7 @@
 #ifndef COFLUX_GENERATOR_HPP
 #define COFLUX_GENERATOR_HPP
 
-#include "promise.hpp"
+#include "detail/promise.hpp"
 
 namespace coflux {
 	template <typename Generator>

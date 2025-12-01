@@ -271,6 +271,7 @@ TEST(CombinerTest, After_TaskLike) {
         auto&& ctx = co_await coflux::context();
 
         auto test_fork = [](auto&&) ->coflux::fork<std::thread::id, group::worker<1>> {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
             co_return std::this_thread::get_id();
         };
 
@@ -294,10 +295,12 @@ TEST(CombinerTest, After_Combiner) {
         auto&& ctx = co_await coflux::context();
 
         auto test_fork1 = [](auto&&) ->coflux::fork<std::thread::id, group::worker<1>> {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
             co_return std::this_thread::get_id();
         };
 
         auto test_fork2 = [](auto&&) ->coflux::fork<std::thread::id, group::worker<2>> {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
             co_return std::this_thread::get_id();
         };
 

@@ -67,7 +67,7 @@ TEST(ChannelTest, ConcurrentMPMC) {
                 int val = id * 100000 + i;
                 // 遇到满队列则自旋重试
                 while (!co_await(chan << val)) {
-                    co_await coflux::this_fork::yield();
+                    // co_await coflux::this_fork::yield();
                 }
             }
             };
@@ -79,7 +79,8 @@ TEST(ChannelTest, ConcurrentMPMC) {
             for (int i = 0; i < ITEMS_PER_PRODUCER; ++i) {
                 // 遇到空队列则自旋重试
                 while (!co_await(chan >> val)) {
-                    co_await coflux::this_fork::yield();
+					// std::cout << "SPIN in consumer\n";
+                    // co_await coflux::this_fork::yield();
                 }
                 total_consumed.fetch_add(1, std::memory_order_relaxed);
             }
@@ -92,13 +93,8 @@ TEST(ChannelTest, ConcurrentMPMC) {
         for (int i = 0; i < N_PRODUCERS; ++i) producers.push_back(make_producer(ctx, chan, i));
         for (int i = 0; i < N_CONSUMERS; ++i) consumers.push_back(make_consumer(ctx, chan, total_consumed));
 
-        // 等待所有任务完成
-        for (auto& p : producers)
-            co_await p;
-        for (auto& c : consumers)
-            co_await c;
-        // co_await when(producers);
-        // co_await when(consumers);
+        co_await when(producers);
+        co_await when(consumers);
         EXPECT_EQ(total_consumed.load(), N_PRODUCERS * ITEMS_PER_PRODUCER);
 
         }(env);

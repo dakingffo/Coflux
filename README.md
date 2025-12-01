@@ -360,14 +360,16 @@ int main() {
 
 ### 5. Execution Thread Group and Context Switching Mechanism
 
-The execution thread group, defined by `worker_group<N>`, sets up $N$ mutually independent execution contexts. The executor template parameter `worker_group<N>::worker<M>` can then locate `worker_group<N>` and dispatch tasks to the corresponding thread.
+The executor thread group, **`worker_group<N>`**, defines $N$ mutually independent execution contexts. The executor template parameter, **`worker_group<N>::worker<M>`**, can be used to locate the `worker_group<N>` and designate a task to the corresponding thread.
+Users can fully rely on this executor to customize a user-space event loop.
 
-Users can fully rely on this executor to customize their own user-space event loops.
+The following demonstrates the working mode of the executor thread group, where the initial task executor is specified as **`noop`** purely to showcase the **`dispatch`** functionality.
 
-The following code demonstrates the operation of the execution thread group. The initial task executor is set to `noop` only to illustrate the `dispatch` functionality.
+**`dispatch`** can forcibly switch the executor, but this is only temporary. The next `co_await` will resume on the default executor, unless **`after`** is used.
 
-The `after` combiner can intercept the default executor's behavior of injecting an `awaitable_closure`. In this case, the executor specified by the user is used to resume the caller.
-
+**`after(..., exec)`** or **`... | after(exec)`** can intercept the default executor's behavior of injecting execution segments into the `task/fork` or `awaitable_closure`. In this case, the caller is resumed using the user-specified executor.
+However, this is conditional on the `task/fork` or `awaitable_closure` *not* completing instantly (i.e., if it completes in an extremely short time, `after` will have no effect).
+Therefore, the role of **`after`** is to maintain the relay of the execution context, preventing the insertion of execution segments from the default executor.
 ```c++
 #include <iostream>
 #include <string>
@@ -402,12 +404,14 @@ int main() {
             
             // Fork that executes on worker 1
             auto fork_on_worker1 = [](auto&&, int id) -> coflux::fork<void, group::worker<1>> {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 std::cout << "  [Worker 1] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
                 co_return;
             };
             
             // Fork that executes on worker 0
             auto fork_on_worker0 = [](auto&&, int id) -> coflux::fork<void, group::worker<0>> {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 std::cout << "  [Worker 0] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
                 co_return;
             };
@@ -601,7 +605,7 @@ target_link_libraries(your_target PRIVATE coflux)
 For the further development of this framework:
 
 1.  Expansion into classic asynchronous working environments such as net/rpc.
-2.  Further performance optimizations (lock-free queues, memory pools with coroutine affinity, etc.).
+2.  Further performance optimizations (more lock-free container, memory pools with coroutine affinity, etc.).
 3.  More user-friendly API design.
 4.  Further refinement of benchmarks and unit tests.
 5.  Fixing hidden bugs and race conditions.

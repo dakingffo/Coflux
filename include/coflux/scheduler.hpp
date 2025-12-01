@@ -10,8 +10,8 @@
 namespace coflux {
 	namespace detail {
 		struct vtable {
-			void* (*get_arg_by_index)(void* instance_, std::size_t index);
-			void* (*get_arg_by_typeid)(void* instance_, std::type_index info);
+			void* (*get_by_index)(void* instance_, std::type_index index, std::size_t pos);
+			void* (*get_by_typeid)(void* instance_, std::type_index index);
 		};
 	}
 
@@ -21,19 +21,20 @@ namespace coflux {
 	template <executive...Executors>
 	class scheduler<Executors...> {
 	public:
-		static void* get_arg_by_index(void* tuple_ptr, std::size_t index) {
-			auto find = [tuple_ptr, index]<std::size_t...Is>(std::index_sequence<Is...>) -> void* {
+		static void* get_by_index(void* tuple_ptr, std::type_index index, std::size_t pos) {
+			auto find = [tuple_ptr, index, pos]<std::size_t...Is>(std::index_sequence<Is...>) -> void* {
 				auto& tuple = *static_cast<std::tuple<Executors...>*>(tuple_ptr);
 				void* res = nullptr;
 				COFLUX_ATTRIBUTES(COFLUX_MAYBE_UNUSED) bool _ = (
-					(Is == index ? (res = &std::get<Is>(tuple), true) : false) || ...
+					(Is == pos && typeid(std::remove_reference_t<std::tuple_element_t<Is, std::tuple<Executors...>>>) == index ? 
+					(res = &std::get<Is>(tuple), true) : false) || ...
 				);
 				return res;
 			};
 			return find(std::make_index_sequence<sizeof...(Executors)>{});
 		}
 
-		static void* get_arg_by_typeid(void* tuple_ptr, std::type_index index) {
+		static void* get_by_typeid(void* tuple_ptr, std::type_index index) {
 			auto find = [tuple_ptr, index]<std::size_t...Is>(std::index_sequence<Is...>) -> void* {
 				auto& tuple = *static_cast<std::tuple<Executors...>*>(tuple_ptr);
 				void* res = nullptr;
@@ -47,8 +48,8 @@ namespace coflux {
 		}
 
 		static constexpr detail::vtable vtb_ = {
-			.get_arg_by_index = &get_arg_by_index,
-			.get_arg_by_typeid = &get_arg_by_typeid
+			.get_by_index  = &get_by_index,
+			.get_by_typeid = &get_by_typeid
 		};
 
 		scheduler(const scheduler&)			   = default;
@@ -68,7 +69,7 @@ namespace coflux {
 			: scheduler(another.template get<Executors>()...) {
 		}
 
-		scheduler() = default;
+		scheduler()  = default;
 		~scheduler() = default;
 
 		template <executive Executor>
@@ -127,14 +128,14 @@ namespace coflux {
 		template <executive Executor>
 		auto& get() noexcept /* Call std::terminate when throw */ {
 			if constexpr (requires {typename Executor::owner_group; }) {
-				auto p = static_cast<typename Executor::owner_group*>(vptr_->get_arg_by_typeid(scheduler_instance_, typeid(typename Executor::owner_group)));
+				auto p = static_cast<typename Executor::owner_group*>(vptr_->get_by_typeid(scheduler_instance_, typeid(typename Executor::owner_group)));
 				if (!p) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_ptr_error();
 				}
 				return p->template get<Executor::pos>();
 			}
 			else {
-				auto p = static_cast<Executor*>(vptr_->get_arg_by_typeid(scheduler_instance_, typeid(Executor)));
+				auto p = static_cast<Executor*>(vptr_->get_by_typeid(scheduler_instance_, typeid(Executor)));
 				if (!p) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 					Null_ptr_error();
 				}
@@ -144,7 +145,7 @@ namespace coflux {
 
 		template <certain_executor Idx>
 		auto& get() noexcept /* Call std::terminate when throw */ {
-			auto p = static_cast<typename Idx::type*>(vptr_->get_arg_by_index(scheduler_instance_, Idx::value));
+			auto p = static_cast<typename Idx::type*>(vptr_->get_by_index(scheduler_instance_, typeid(typename Idx::type), Idx::value));
 			if (!p) COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
 				Null_ptr_error();
 			}

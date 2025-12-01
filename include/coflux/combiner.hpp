@@ -5,8 +5,7 @@
 #ifndef COFLUX_COMBINER_HPP
 #define COFLUX_COMBINER_HPP
 
-#include "forward_declaration.hpp"
-#include "awaiter.hpp"
+#include "detail/awaiter.hpp"
 
 namespace coflux {
     namespace detail {
@@ -71,11 +70,13 @@ namespace coflux {
             bool await_suspend(std::coroutine_handle<Promise> handle) {
                 suspend_base::await_suspend();
                 continuation_.store(handle);
-                auto callback = [result = result_, this, handle] <std::size_t I>(auto& basic_task_result) {
+                auto result = result_;
+                auto callback = [result, this, handle] <std::size_t I>(auto& basic_task_result) {
                     std::size_t expected = -1;
-                    if (result->first.compare_exchange_strong(expected, I, std::memory_order_acq_rel)) {
+                    if (result->first.compare_exchange_strong(expected, I, std::memory_order_seq_cst, std::memory_order_relaxed)) {
                         if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
-                            COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+                            COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) 
+                        {
                             std::exception_ptr e = std::move(basic_task_result).error();
                             if (basic_task_result.get_status().exchange(handled) != handled) {
                                 error_ = e;
@@ -92,21 +93,22 @@ namespace coflux {
                                 >(basic_task_result).value());
                         }
                         stop_source_.request_stop();
+                        if (!already_suspend_.load(std::memory_order_acquire)) {
+                            return;
+                        }
                         std::coroutine_handle<> handle_to_resume = continuation_.exchange(nullptr);
                         if (handle_to_resume) {
-                            while (!already_suspend_.load(std::memory_order_acquire)) {
-                                std::this_thread::yield();
-                            }
                             suspend_base::execute(handle_to_resume);
                         }
                     }
                 };
 
-                auto void_callback = [result = result_, this, handle] <std::size_t I>(auto& basic_task_result) {
+                auto void_callback = [result, this, handle] <std::size_t I>(auto& basic_task_result) {
                     std::size_t expected = -1;
-                    if (result->first.compare_exchange_strong(expected, I, std::memory_order_acq_rel)) {
+                    if (result->first.compare_exchange_strong(expected, I, std::memory_order_seq_cst, std::memory_order_relaxed)) {
                         if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
-                            COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+                            COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) 
+                        {
                             std::exception_ptr e = std::move(basic_task_result).error();
                             if (basic_task_result.get_status().exchange(handled) != handled) {
                                 error_ = e;
@@ -119,11 +121,11 @@ namespace coflux {
                             result->second.template emplace<I>();
                         }
                         stop_source_.request_stop();
+                        if (!already_suspend_.load(std::memory_order_acquire)) {
+                            return;
+                        }
                         std::coroutine_handle<> handle_to_resume = continuation_.exchange(nullptr);
                         if (handle_to_resume) {
-                            while (!already_suspend_.load(std::memory_order_acquire)) {
-                                std::this_thread::yield();
-                            }
                             suspend_base::execute(handle_to_resume);
                         }
                     }
@@ -158,7 +160,7 @@ namespace coflux {
 
                 already_suspend_ = true;
 
-                if (result_->first.load(std::memory_order_acquire) != -1 && continuation_.exchange(nullptr)) {
+                if (result->first.load(std::memory_order_acquire) != -1 && continuation_.exchange(nullptr)) {
                     return false;
                 }
                 else {
@@ -248,10 +250,11 @@ namespace coflux {
             bool await_suspend(std::coroutine_handle<Promise> handle) {
                 suspend_base::await_suspend();
                 continuation_.store(handle);
-
-                auto callback = [result = result_, this, handle]<std::size_t I>(auto& basic_task_result) {
+                auto result = result_;
+                auto callback = [result, this, handle]<std::size_t I>(auto& basic_task_result) {
                     if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
-                        COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+                        COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) 
+                    {
                         std::lock_guard<std::mutex> lock(mtx_);
                         if (!error_) {
                             std::exception_ptr e = std::move(basic_task_result).error();
@@ -272,6 +275,9 @@ namespace coflux {
                             >(basic_task_result).value());
                     }
                     if (result->first.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+                        if (!already_suspend_.load(std::memory_order_acquire)) {
+                            return;
+                        }
                         std::coroutine_handle<> handle_to_resume = continuation_.exchange(nullptr);
                         if (handle_to_resume) {
                             suspend_base::execute(handle_to_resume);
@@ -279,9 +285,10 @@ namespace coflux {
                     }
                 };
 
-                auto void_callback = [result = result_, this, handle]<std::size_t I>(auto& basic_task_result) {
+                auto void_callback = [result, this, handle]<std::size_t I>(auto& basic_task_result) {
                     if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
-                        COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+                        COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) 
+                    {
                         std::lock_guard<std::mutex> lock(mtx_);
                         if (!error_) {
                             std::exception_ptr e = std::move(basic_task_result).error();
@@ -298,6 +305,9 @@ namespace coflux {
                         get<I>(result->second).emplace();
                     }
                     if (result->first.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+                        if (!already_suspend_.load(std::memory_order_acquire)) {
+                            return;
+                        }
                         std::coroutine_handle<> handle_to_resume = continuation_.exchange(nullptr);
                         if (handle_to_resume) {
                             suspend_base::execute(handle_to_resume);
@@ -332,7 +342,8 @@ namespace coflux {
                 };
                 set_callback((std::make_index_sequence<N>()));
 
-                if (result_->first.load(std::memory_order_acquire) == 0 && continuation_.exchange(nullptr)) {
+                already_suspend_.store(true, std::memory_order_release);
+                if (result->first.load(std::memory_order_acquire) == 0 && continuation_.exchange(nullptr)) {
                     return false;
                 }
                 else {
@@ -353,6 +364,7 @@ namespace coflux {
 
             static constexpr std::size_t N = sizeof...(TaskLikes);
 
+            std::atomic_bool                     already_suspend_;
             result_proxy                         result_;
             std::exception_ptr                   error_ = nullptr;
             std::atomic<std::coroutine_handle<>> continuation_;
@@ -445,8 +457,8 @@ namespace coflux {
                 suspend_base::await_suspend();
                 std::size_t n = std::min(this->n_, (std::size_t)std::ranges::distance(this->basic_tasks_));
                 continuation_.store(handle);
-
-                auto callback = [result = result_, this, n, handle] (auto& basic_task_result) {
+                auto result = result_;
+                auto callback = [result, this, n, handle] (auto& basic_task_result) {
                     if constexpr (std::is_void_v<value_type>) {
                         return;
                     }
@@ -459,41 +471,43 @@ namespace coflux {
                         else {
                             try_resume_from_this = (current_count == n);
                         }
-                        std::lock_guard<std::mutex> guard(mtx_);
-                        if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
-                            COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-                            if (!error_) {
-                                std::exception_ptr e = std::move(basic_task_result).error();
-                                if (basic_task_result.get_status().exchange(handled) != handled) {
-                                    error_ = e;
+                        {
+                            std::lock_guard<std::mutex> guard(mtx_);
+                            if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
+                                COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+                                if (!error_) {
+                                    std::exception_ptr e = std::move(basic_task_result).error();
+                                    if (basic_task_result.get_status().exchange(handled) != handled) {
+                                        error_ = e;
+                                    }
+                                    else {
+                                        error_ = std::make_exception_ptr(std::runtime_error("Can't get result because there is an exception."));
+                                    }
+                                    stop_source_.request_stop();
                                 }
-                                else {
-                                    error_ = std::make_exception_ptr(std::runtime_error("Can't get result because there is an exception."));
-                                }
-                                stop_source_.request_stop();
                             }
-                        }
-                        else {
-                            result->second.emplace_back(std::forward<
-                                std::conditional_t<is_fork_lvalue_range_v<task_type>,
-                                std::remove_reference_t<decltype(basic_task_result)>&,
-                                std::remove_reference_t<decltype(basic_task_result)>>
-                                >(basic_task_result).value());
+                            else {
+                                result->second.emplace_back(std::forward<
+                                    std::conditional_t<is_fork_lvalue_range_v<task_type>,
+                                    std::remove_reference_t<decltype(basic_task_result)>&,
+                                    std::remove_reference_t<decltype(basic_task_result)>>
+                                    >(basic_task_result).value());
+                            }
                         }
                         if (try_resume_from_this) {
                             stop_source_.request_stop();
+                            if (!already_suspend_.load(std::memory_order_acquire)) {
+                                return;
+                            }
                             std::coroutine_handle<> handle_to_resume = continuation_.exchange(nullptr);
                             if (handle_to_resume) {
-                                while (!already_suspend_.load(std::memory_order_acquire)) {
-                                    std::this_thread::yield();
-                                }
                                 suspend_base::execute(handle_to_resume);
                             }
                         }
                     }
                     };
 
-                auto void_callback = [result = result_, this, n, handle]
+                auto void_callback = [result, this, n, handle]
                     (auto& basic_task_result) {
                     if constexpr (std::is_object_v<value_type>) {
                         return;
@@ -507,27 +521,29 @@ namespace coflux {
                         else {
                             try_resume_from_this = (current_count == n);
                         }
-                        std::lock_guard<std::mutex> guard(mtx_);
-                        if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
-                            COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
-                            if (!error_) {
-                                std::exception_ptr e = std::move(basic_task_result).error();
-                                if (basic_task_result.get_status().exchange(handled) != handled) {
-                                    error_ = e;
+                        {
+                            std::lock_guard<std::mutex> guard(mtx_);
+                            if (basic_task_result.get_status().load(std::memory_order_acquire) != completed)
+                                COFLUX_ATTRIBUTES(COFLUX_UNLIKELY) {
+                                if (!error_) {
+                                    std::exception_ptr e = std::move(basic_task_result).error();
+                                    if (basic_task_result.get_status().exchange(handled) != handled) {
+                                        error_ = e;
+                                    }
+                                    else {
+                                        error_ = std::make_exception_ptr(std::runtime_error("Can't get result because there is an exception."));
+                                    }
+                                    stop_source_.request_stop();
                                 }
-                                else {
-                                    error_ = std::make_exception_ptr(std::runtime_error("Can't get result because there is an exception."));
-                                }
-                                stop_source_.request_stop();
                             }
                         }
                         if (try_resume_from_this) {
                             stop_source_.request_stop();
+                            if (!already_suspend_.load(std::memory_order_acquire)) {
+                                return;
+                            }
                             std::coroutine_handle<> handle_to_resume = continuation_.exchange(nullptr);
                             if (handle_to_resume) {
-                                while (!already_suspend_.load(std::memory_order_acquire)) {
-                                    std::this_thread::yield();
-                                }
                                 suspend_base::execute(handle_to_resume);
                             }
                         }
@@ -551,9 +567,8 @@ namespace coflux {
                     }
                 }
 
-                already_suspend_ = true;
-
-                if (result_->first.load(std::memory_order_acquire) >= this->n_ && continuation_.exchange(nullptr)) {
+                already_suspend_.store(true, std::memory_order_release);
+                if (result->first.load(std::memory_order_acquire) >= n && continuation_.exchange(nullptr)) {
                     return false;
                 }
                 else {

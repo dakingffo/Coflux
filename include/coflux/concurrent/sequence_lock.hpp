@@ -5,7 +5,7 @@
 #ifndef COFLUX_SEQUENCE_LOCK_HPP
 #define COFLUX_SEQUENCE_LOCK_HPP
 
-#include "../forward_declaration.hpp"
+#include "../detail/forward_declaration.hpp"
 
 namespace coflux {
 	namespace concurrent {

@@ -5,7 +5,7 @@
 #ifndef COFLUX_UNBOUNDED_QUEUE_HPP
 #define COFLUX_UNBOUNDED_QUEUE_HPP
 
-#include "../forward_declaration.hpp"
+#include "../detail/forward_declaration.hpp"
 #include "ring.hpp"
 
 namespace coflux {
@@ -136,18 +136,19 @@ namespace coflux {
 					if (mtx_.try_lock()) {
 						cont_.push_back(std::forward<Ref>(value));
 						size_.fetch_add(1, std::memory_order_release);
-						not_empty_cv_.notify_one();
 						mtx_.unlock();
+						not_empty_cv_.notify_one();
 						return;
 					}
 					if (i & (constant_traits::ENQUEUE_SPIN_INTERVAL_OF_EACH_YIELD - 1)) {
 						std::this_thread::yield();
 					}
 				}
-
-				std::lock_guard<std::mutex> lock(mtx_);
-				cont_.push_back(std::forward<Ref>(value));
-				size_.fetch_add(1, std::memory_order_release);
+				{
+					std::lock_guard<std::mutex> lock(mtx_);
+					cont_.push_back(std::forward<Ref>(value));
+					size_.fetch_add(1, std::memory_order_release);
+				}
 				not_empty_cv_.notify_one();
 			}
 
@@ -225,9 +226,11 @@ namespace coflux {
 				}
 
 				std::unique_lock<std::mutex> lock(mtx_);
+				// std::cerr << " THREAD" << std::this_thread::get_id() << " WAIT DEQUEUE BULK\n";
 				not_empty_cv_.wait(lock, [this]() {
 					return size_.load(std::memory_order_relaxed) > 0;
 					});
+				// std::cerr << " THREAD" << std::this_thread::get_id() << " WAKE UP FROM WAIT DEQUEUE BULK\n";
 				std::size_t counter = 0;
 				for (; counter < std::min(capacity, size_.load(std::memory_order_relaxed)); counter++) {
 					*buffer++ = cont_.front();

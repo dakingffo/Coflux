@@ -360,7 +360,10 @@ int main() {
 用户完全可以依赖此执行器定制用户态事件循环。
 
 下面演示了执行线程组的工作模式，初始指定task执行器为`noop`仅用于展示`dispatch`功能。
-`after`可以拦截默认执行器注入`awaitable_closure`的行为，在这种情况下则使用用户指定的执行器恢复调用者。
+`dispatch`可以强制切换执行器，但仅仅是临时的。下个`co_await`在默认情况下恢复到默认执行器，除非使用`after`。
+`after(..., exec)`或`... | after(exec)`可以拦截默认执行器注入`task/fork`或`awaitable_closure`的行为，在这种情况下则使用用户指定的执行器恢复调用者。
+但前提是`task/fork`或`awaitable_closure`未完成，若其在极短的时间内执行完成，`after`不起作用。
+因此，`after`的定位是维护执行上下文的接力，避免插入默认执行器的执行片段。
 ```C++
 #include <iostream>
 #include <string>
@@ -386,10 +389,12 @@ int main() {
 			std::cout << "After dispatch to worker 0, thread: " << std::this_thread::get_id() << "\n";
             auto&& ctx = co_await coflux::context();
             auto fork_on_worker1 = [](auto&&, int id) -> coflux::fork<void, group::worker<1>> {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 std::cout << "  [Worker 1] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
                 co_return;
                 };
             auto fork_on_worker0 = [](auto&&, int id) -> coflux::fork<void, group::worker<0>> {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 std::cout << "  [Worker 0] Processing ID: " << id << " on thread " << std::this_thread::get_id() << "\n";
                 co_return;
                 };
@@ -560,7 +565,7 @@ target_link_libraries(your_target PRIVATE coflux)
 ## 面向未来
 对于本框架的进一步发展：
 1. 在net/rpc等经典异步工作环境进行开拓。
-2. 希望更进一步的性能优化（无锁队列、亲和协程的内存池等）。
+2. 希望更进一步的性能优化（更多高性能无锁数据结构、亲和协程的内存池等）。
 3. 更有亲和力的API设计。
 4. 进一步完善基准测试和单元测试。
 5. 修复隐藏的bug和竞态条件。

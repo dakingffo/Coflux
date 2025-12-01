@@ -8,7 +8,7 @@
 // #include <moodycamel/blockingconcurrentqueue.h> 
 // coflux support moodycamel::BlockingConcurrentQueue as template argument of thread_pool, but we don't provide it directly.
 
-#include "../forward_declaration.hpp"
+#include "../detail/forward_declaration.hpp"
 #include "ring.hpp"
 #include "unbounded_queue.hpp"
 #include "worksteal_thread.hpp"

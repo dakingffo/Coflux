@@ -5,7 +5,7 @@
 #ifndef COFLUX_RESULT_HPP
 #define COFLUX_RESULT_HPP
 
-#include "this_coroutine.hpp"
+#include "../this_coroutine.hpp"
 
 namespace coflux {
 	namespace detail {

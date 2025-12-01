@@ -5,7 +5,7 @@
 #ifndef COFLUX_TIMER_THREAD_HPP
 #define COFLUX_TIMER_THREAD_HPP
 
-#include "../forward_declaration.hpp"
+#include "../detail/forward_declaration.hpp"
 
 namespace coflux {
 	namespace concurrent {

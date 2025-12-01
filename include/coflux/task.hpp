@@ -5,7 +5,7 @@
 #ifndef COFLUX_TASK_HPP
 #define COFLUX_TASK_HPP
 
-#include "promise.hpp"
+#include "detail/promise.hpp"
 
 namespace coflux {
 	namespace detail {

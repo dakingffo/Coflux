@@ -5,7 +5,7 @@
 #ifndef COFLUX_WORKSTEAL_THREAD_HPP
 #define COFLUX_WORKSTEAL_THREAD_HPP
 
-#include "../forward_declaration.hpp"
+#include "../detail/forward_declaration.hpp"
 #include "ring.hpp"
 
 namespace coflux {
@@ -94,7 +94,7 @@ namespace coflux {
 						continue;
 					}
 
-					if (task_queue.size_approx() || Has_work_anywhere(threads)) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
+					if (Has_work_anywhere(task_queue, threads)) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 						std::this_thread::yield(); 
 						continue;
 					}
@@ -122,6 +122,7 @@ namespace coflux {
 
 					if (running.load(std::memory_order_relaxed)) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
 						if (n) COFLUX_ATTRIBUTES(COFLUX_LIKELY) {
+							// std::cerr << " THREAD" << std::this_thread::get_id() << " Handle Local\n";
 							Handle_local();
 						}
 					}
@@ -134,7 +135,11 @@ namespace coflux {
 				return deque_.begin();
 			}
 
-			bool Has_work_anywhere(std::vector<std::unique_ptr<worksteal_thread>>& threads) noexcept {
+			template <typename TaskQueue>
+			bool Has_work_anywhere(TaskQueue& task_queue, std::vector<std::unique_ptr<worksteal_thread>>& threads) noexcept {
+				if (task_queue.size_approx()) {
+					return true;
+				}
 				for (auto& t : threads) {
 					if (t->deque_.size_approx() > 0) { 
 						return true;

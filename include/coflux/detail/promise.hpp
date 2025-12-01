@@ -6,7 +6,7 @@
 #define COFLUX_PROMISE_HPP
 
 #include "result.hpp"
-#include "channel.hpp"
+#include "../channel.hpp"
 
 namespace coflux {
 	namespace detail {
