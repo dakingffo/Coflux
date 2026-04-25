@@ -5,16 +5,11 @@
 #ifndef COFLUX_HPP
 #define COFLUX_HPP
 
-#include "coflux/forward_declaration.hpp"
-
-#include "coflux/awaiter.hpp"
 #include "coflux/channel.hpp"
 #include "coflux/combiner.hpp"
 #include "coflux/environment.hpp"
 #include "coflux/executor.hpp"
 #include "coflux/generator.hpp"
-#include "coflux/promise.hpp"
-#include "coflux/result.hpp"
 #include "coflux/scheduler.hpp"
 #include "coflux/task.hpp"
 #include "coflux/this_coroutine.hpp"
